@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>MarkTeX PDF sample</title>
+  <style>
+    body { font: 12pt/1.5 "Times New Roman", "SimSun", serif; margin: 0; }
+    h1 { font-size: 24pt; margin: 0 0 12pt; }
+    h2 { font-size: 16pt; margin: 18pt 0 6pt; }
+    p { margin: 0 0 10pt; text-align: justify; }
+    ul, ol { margin: 0 0 10pt; }
+    .page-break { break-before: page; }
+  </style>
+</head>
+<body>
+  <h1>Attention Is All You Need</h1>
+  <p>The dominant sequence transduction models are based on complex recurrent or convolutional neural networks that include an encoder and a decoder. The best performing models also connect the encoder and decoder through an attention mechanism.</p>
+  <p>We propose a new simple network architecture, the Transformer, based solely on attention mechanisms, dispensing with recurrence and convolutions entirely.</p>
+  <h2>1 Introduction</h2>
+  <p>• Recurrent models preclude parallelization within training examples.</p>
+  <p>• Attention mechanisms allow modeling of dependencies without regard to their distance, which is a long line that wraps.</p>
+  <ol>
+    <li>Encoder and decoder stacks</li>
+    <li>Scaled dot-product attention</li>
+  </ol>
+  <h2>2 中文段落</h2>
+  <p>注意力机制已经成为各种任务中序列建模和转导模型不可或缺的组成部分，它允许对依赖关系进行建模，而无需考虑它们在输入或输出序列中的距离。这一段足够长，会在 PDF 中折成多行。</p>
+  <p class="page-break">This paragraph starts on the second page and continues the discussion of multi-head attention, which allows the model to jointly attend to information from different representation subspaces.</p>
+</body>
+</html>

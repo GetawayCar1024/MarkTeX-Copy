@@ -294,6 +294,8 @@
     }
   }
 
+  CCM.escapeMarkdownText = (t, settings) => esc(t, { s: settings });
+
   CCM.toMarkdown = function toMarkdown(root, infos, settings) {
     const st = { infos, s: settings, delims: CCM.delims(settings), pres: [], emph: [] };
     let md = conv(root, { st, inline: false, table: false });

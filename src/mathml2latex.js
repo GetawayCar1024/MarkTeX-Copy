@@ -385,6 +385,12 @@
     }
   }
 
+  // 供 PDF 公式重建复用
+  CCM.charTex = charTex;
+  CCM.texJoin = join;
+  CCM.texGroup = grp;
+  CCM.texFuncs = FUNCS;
+
   CCM.mathmlToLatex = (math) => {
     try {
       return conv(math).replace(/\s+/g, ' ').trim();

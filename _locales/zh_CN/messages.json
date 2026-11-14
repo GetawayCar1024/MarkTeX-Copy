@@ -1,0 +1,5 @@
+{
+  "extName": { "message": "MarkTeX Copy" },
+  "extShortName": { "message": "MarkTeX" },
+  "extDescription": { "message": "把网页和 PDF 复制为 Markdown / HTML，完整保留 KaTeX、MathJax、MathML 公式的 LaTeX 源码。" }
+}

@@ -14,6 +14,7 @@
   --press: rgba(0, 0, 0, 0.05);
   --radius: 10px;
   --radius-sm: 7px;
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.08), 0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -30,6 +31,7 @@
     --red: #ff453a;
     --orange: #ff9f0a;
     --press: rgba(255, 255, 255, 0.06);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 2px 8px rgba(0, 0, 0, 0.25);
   }
 }
 
@@ -56,7 +58,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- 顶部 ---------- */
 .hero { display: flex; align-items: center; gap: 12px; margin: 2px 4px 14px; }
-.app-icon { width: 44px; height: 44px; border-radius: 10px; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
+.app-icon { width: 44px; height: 44px; border-radius: 10px; box-shadow: var(--shadow-sm); }
 .hero h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.2px; }
 .hero p { margin: 1px 0 0; font-size: 12.5px; color: var(--secondary); }
 
@@ -126,6 +128,8 @@ label.row { cursor: pointer; }
 .tile-blue { background: linear-gradient(180deg, #3d9bff, #0a6cff); }
 .tile-orange { background: linear-gradient(180deg, #ffad33, #ff8a00); }
 .tile-gray { background: linear-gradient(180deg, #9a9aa0, #74747a); }
+.tile-red { background: linear-gradient(180deg, #ff6259, #e8322a); }
+.pdf-group { margin-top: 12px; }
 
 /* ---------- 提示条 ---------- */
 .banner {
@@ -166,8 +170,10 @@ label.row { cursor: pointer; }
   border-radius: var(--radius-sm);
   background: var(--fill);
 }
+.seg.seg-3 { grid-template-columns: 1fr 1fr 1fr; width: 192px; }
 .seg button {
   padding: 3px 6px;
+  white-space: nowrap;
   border: 0;
   border-radius: 5px;
   background: transparent;
@@ -177,7 +183,7 @@ label.row { cursor: pointer; }
 }
 .seg button.active {
   background: var(--seg-active);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow-sm);
   font-weight: 600;
 }
 

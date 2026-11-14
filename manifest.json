@@ -1,15 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "MarkTeX Copy",
-  "version": "0.1.0",
-  "description": "把网页内容复制为 Markdown / HTML，完整保留 KaTeX、MathJax、MathML 公式的 LaTeX 源码。",
+  "name": "__MSG_extName__",
+  "version": "0.1.1",
+  "description": "__MSG_extDescription__",
   "permissions": [
     "contextMenus",
     "clipboardWrite",
     "storage",
     "scripting",
     "activeTab",
-    "offscreen"
+    "offscreen",
+    "notifications"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,7 +19,7 @@
     "service_worker": "background.js"
   },
   "action": {
-    "default_title": "MarkTeX Copy",
+    "default_title": "__MSG_extName__",
     "default_popup": "popup/popup.html",
     "default_icon": {
       "16": "icons/icon16.png",
@@ -44,10 +45,12 @@
       ],
       "js": [
         "src/settings.js",
+        "src/i18n.js",
         "src/mathml2latex.js",
         "src/capture.js",
         "src/markdown.js",
         "src/html.js",
+        "src/pdf-text.js",
         "src/content.js"
       ],
       "all_frames": true,
@@ -66,6 +69,17 @@
       "run_at": "document_idle"
     }
   ],
-  "short_name": "MarkTeX",
-  "homepage_url": "https://github.com/GetawayCar1024/marktex-copy"
+  "short_name": "__MSG_extShortName__",
+  "homepage_url": "https://github.com/GetawayCar1024/marktex-copy",
+  "default_locale": "en",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "vendor/pdfjs/web/viewer.html"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
 }

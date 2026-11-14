@@ -1,0 +1,5 @@
+{
+  "extName": { "message": "MarkTeX Copy" },
+  "extShortName": { "message": "MarkTeX" },
+  "extDescription": { "message": "Copy web pages and PDFs as Markdown / HTML, keeping KaTeX, MathJax and MathML formulas as LaTeX source." }
+}

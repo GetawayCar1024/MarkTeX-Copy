@@ -8,6 +8,8 @@
     escapeMarkdown: true,
     appendSource: false,
     showToast: true,
+    language: 'auto',        // 'auto' 跟随浏览器 | 'zh' | 'en'
+    openPdfInViewer: false,  // 自动用内置 PDF.js 阅读器打开 PDF；默认仍用浏览器自带阅读器，需要时再切换
     // 页面内快捷键（null 表示未设置）。有选区时触发插件复制，没有选区时按键照常传给页面
     shortcuts: {
       markdown: { code: 'KeyM', key: 'M', ctrl: false, alt: true, shift: true, meta: false },
