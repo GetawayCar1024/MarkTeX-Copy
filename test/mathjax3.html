@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试：MathJax v3</title>
+  <script>
+    window.MathJax = { tex: { inlineMath: [['$', '$'], ['\\(', '\\)']] } };
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-chtml.js"></script>
+  <style>body { max-width: 760px; margin: 2em auto; font-family: system-ui, sans-serif; }</style>
+</head>
+<body>
+<article id="content">
+  <h2>MathJax v3（CHTML）</h2>
+  <p>行内公式 $\mathbb{R}^n \ni \vec{x}$ 与 \(\hat{\theta} = \arg\max_\theta L(\theta)\)。</p>
+  <p>块级公式：</p>
+  $$
+  f(x) = \begin{cases} x^2, & x \ge 0 \\ -x, & x < 0 \end{cases}
+  $$
+  <p>矩阵 $\begin{pmatrix} a & b \\ c & d \end{pmatrix}$ 结束。</p>
+</article>
+</body>
+</html>

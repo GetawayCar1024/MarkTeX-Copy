@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试：KaTeX / MathML / 各类公式</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>body { max-width: 760px; margin: 2em auto; font-family: system-ui, sans-serif; }</style>
+</head>
+<body>
+<article id="content">
+  <h2>KaTeX 区块</h2>
+  <p>质能方程 $E = mc^2$，以及 <strong>粗体</strong>、<em>斜体</em>、<code>inline_code</code> 和 <a href="/docs?a=1">相对链接</a>。</p>
+  <p>高斯积分：</p>
+  $$\int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}$$
+  <ul>
+    <li>列表项 $\alpha + \beta$</li>
+    <li>嵌套
+      <ol>
+        <li>第一 $\frac{a}{b}$</li>
+        <li>第二</li>
+      </ol>
+    </li>
+  </ul>
+  <table>
+    <thead><tr><th>符号</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td>$\nabla \cdot \mathbf{E}$</td><td>散度 | 管道</td></tr>
+      <tr><td>$\sum_{i=1}^n i$</td><td>求和</td></tr>
+    </tbody>
+  </table>
+  <pre><code class="language-python">def f(x):
+    return x ** 2  # `code`
+</code></pre>
+  <blockquote><p>引用中的公式 $a^2+b^2=c^2$</p></blockquote>
+
+  <h2>原生 MathML（无 TeX 注释，测试 MathML→LaTeX 转换）</h2>
+  <p>二次方程求根：
+    <math display="block"><mi>x</mi><mo>=</mo><mfrac><mrow><mo>−</mo><mi>b</mi><mo>±</mo><msqrt><msup><mi>b</mi><mn>2</mn></msup><mo>−</mo><mn>4</mn><mi>a</mi><mi>c</mi></msqrt></mrow><mrow><mn>2</mn><mi>a</mi></mrow></mfrac></math>
+  </p>
+  <p>矩阵：<math><mrow><mo fence="true">(</mo><mtable><mtr><mtd><mn>1</mn></mtd><mtd><mn>0</mn></mtd></mtr><mtr><mtd><mn>0</mn></mtd><mtd><mn>1</mn></mtd></mtr></mtable><mo fence="true">)</mo></mrow></math></p>
+
+  <h2>LaTeXML / Wikipedia 风格（alttext）</h2>
+  <p>欧拉公式 <span class="mwe-math-element"><math alttext="{\displaystyle e^{i\pi}+1=0}"><mi>e</mi></math><img class="mwe-math-fallback-image-inline" alt="{\displaystyle e^{i\pi}+1=0}" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></span>。</p>
+
+  <h2>知乎风格（data-tex）</h2>
+  <p>行内 <span class="ztext-math" data-eeimg="1" data-tex="\lim_{n\to\infty}(1+\frac1n)^n=e">渲染后的图片</span> 结束。</p>
+
+  <h2>样式与转义</h2>
+  <div role="heading" aria-level="3" style="font-size:20px;font-weight:700">用 role=heading 实现的标题</div>
+  <p>CSS 粗体：<span style="font-weight:600">这段是 CSS 加粗</span>，CSS 斜体：<span style="font-style:italic">倾斜</span>，<span style="text-decoration:line-through">删除</span>。</p>
+  <p><strong>结论：</strong>中文标点紧跟粗体，<strong>“引号”</strong>也一样。</p>
+  <p>方括号：数组 a[0]、引用 [1]、伪链接 [文字](不是链接) 以及 \[ 原样反斜杠。</p>
+  <p>引用角标链接<sup><a href="#cite-1">[1]</a></sup>，带方括号的链接 <a href="https://example.com/a(b)">[PDF] 论文 [v2]</a>。</p>
+
+  <h2>图片公式（alt）</h2>
+  <p>CodeCogs：<img src="https://latex.codecogs.com/svg.image?x^2" alt="x^2+y^2=r^2"></p>
+</article>
+<script>
+  renderMathInElement(document.getElementById('content'), {
+    delimiters: [{ left: '$$', right: '$$', display: true }, { left: '$', right: '$', display: false }],
+  });
+</script>
+</body>
+</html>

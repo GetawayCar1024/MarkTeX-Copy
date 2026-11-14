@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MarkTeX Copy</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header class="hero">
+      <img src="../icons/icon128.png" alt="" class="app-icon">
+      <div>
+        <h1>MarkTeX Copy</h1>
+        <p>复制为 Markdown / HTML，完整保留公式</p>
+      </div>
+    </header>
+
+    <div id="banner" class="banner" hidden></div>
+
+    <h2 class="group-title">复制选中内容</h2>
+    <section class="group">
+      <button class="row action" data-format="markdown">
+        <span class="tile tile-blue">
+          <svg viewBox="0 0 24 24"><path d="M3 17V7h2.4l2.6 3.4L10.6 7H13v10h-2.4v-6.2L8 14l-2.6-3.2V17zm13.5 0-3.5-4h2.3V7h2.4v6H20z"/></svg>
+        </span>
+        <span class="label">Markdown</span>
+        <span class="detail" data-shortcut-label="markdown"></span>
+        <span class="chevron"></span>
+      </button>
+      <button class="row action" data-format="html">
+        <span class="tile tile-orange">
+          <svg viewBox="0 0 24 24"><path d="M8.6 16.6 4 12l4.6-4.6L10 8.8 6.8 12l3.2 3.2zm6.8 0L14 15.2l3.2-3.2L14 8.8l1.4-1.4L20 12z"/></svg>
+        </span>
+        <span class="label">HTML 富文本</span>
+        <span class="detail" data-shortcut-label="html"></span>
+        <span class="chevron"></span>
+      </button>
+      <button class="row action" data-format="html-source">
+        <span class="tile tile-gray">
+          <svg viewBox="0 0 24 24"><path d="M9 4H7a2 2 0 0 0-2 2v4a2 2 0 0 1-2 2 2 2 0 0 1 2 2v4a2 2 0 0 0 2 2h2v-2H7v-4.5A2.5 2.5 0 0 0 5.6 12 2.5 2.5 0 0 0 7 9.5V6h2zm6 0h2a2 2 0 0 1 2 2v4a2 2 0 0 0 2 2 2 2 0 0 0-2 2v4a2 2 0 0 1-2 2h-2v-2h2v-4.5a2.5 2.5 0 0 1 1.4-2.5A2.5 2.5 0 0 1 17 9.5V6h-2z"/></svg>
+        </span>
+        <span class="label">HTML 源码</span>
+        <span class="detail" data-shortcut-label="html-source"></span>
+        <span class="chevron"></span>
+      </button>
+    </section>
+    <p class="footnote">也可以在网页中右键选择；右键公式可单独复制它的 LaTeX。</p>
+
+    <section class="group preview-group" id="previewGroup" hidden>
+      <div class="row static">
+        <span class="label">预览</span>
+        <span class="detail" id="previewMeta"></span>
+      </div>
+      <textarea id="preview" readonly spellcheck="false"></textarea>
+    </section>
+
+    <h2 class="group-title">公式</h2>
+    <section class="group">
+      <div class="row static">
+        <span class="label">行内公式</span>
+        <div class="seg" data-name="inlineDelim">
+          <button data-value="dollar">$ … $</button>
+          <button data-value="paren">\( … \)</button>
+        </div>
+      </div>
+      <div class="row static">
+        <span class="label">块级公式</span>
+        <div class="seg" data-name="displayDelim">
+          <button data-value="dollar">$$ … $$</button>
+          <button data-value="bracket">\[ … \]</button>
+        </div>
+      </div>
+      <div class="row static">
+        <span class="label">HTML 中的公式</span>
+        <div class="seg" data-name="htmlMath">
+          <button data-value="latex">LaTeX</button>
+          <button data-value="mathml">MathML</button>
+        </div>
+      </div>
+    </section>
+    <p class="footnote">选择 MathML 时，粘贴到 Word 会保留为可编辑的公式。</p>
+
+    <h2 class="group-title">快捷键</h2>
+    <section class="group">
+      <div class="row static">
+        <span class="label">Markdown</span>
+        <span class="keys"><button class="key" data-format="markdown"></button><button class="clear" data-clear="markdown" title="清除" aria-label="清除"></button></span>
+      </div>
+      <div class="row static">
+        <span class="label">HTML 富文本</span>
+        <span class="keys"><button class="key" data-format="html"></button><button class="clear" data-clear="html" title="清除" aria-label="清除"></button></span>
+      </div>
+      <div class="row static">
+        <span class="label">HTML 源码</span>
+        <span class="keys"><button class="key" data-format="html-source"></button><button class="clear" data-clear="html-source" title="清除" aria-label="清除"></button></span>
+      </div>
+    </section>
+    <p class="footnote" id="keyHint">点击后按下组合键，Esc 取消。只在网页中有选中内容时生效，否则按键照常交给网页，所以也可以直接设为 Ctrl+C。</p>
+
+    <h2 class="group-title">通用</h2>
+    <section class="group">
+      <label class="row static">
+        <span class="label">转义 Markdown 特殊字符</span>
+        <input type="checkbox" class="switch" name="escapeMarkdown">
+      </label>
+      <label class="row static">
+        <span class="label">末尾附加来源链接</span>
+        <input type="checkbox" class="switch" name="appendSource">
+      </label>
+      <label class="row static">
+        <span class="label">复制后在页面显示提示</span>
+        <input type="checkbox" class="switch" name="showToast">
+      </label>
+    </section>
+
+    <footer>
+      <span id="version"></span> ·
+      <a href="https://github.com/GetawayCar1024/marktex-copy" target="_blank" rel="noopener">GitHub</a>
+    </footer>
+  </main>
+
+  <script src="../src/settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

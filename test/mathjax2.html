@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>测试：MathJax v2（类似 Stack Exchange）</title>
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({ tex2jax: { inlineMath: [['$', '$']], displayMath: [['$$', '$$']] } });
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjax@2.7.9/MathJax.js?config=TeX-AMS_HTML"></script>
+  <style>body { max-width: 760px; margin: 2em auto; font-family: system-ui, sans-serif; }</style>
+</head>
+<body>
+<article id="content">
+  <h2>MathJax v2</h2>
+  <p>泰勒展开 $e^x = \sum_{k=0}^\infty \frac{x^k}{k!}$，很常用。</p>
+  $$\oint_C \mathbf{F}\cdot d\mathbf{r} = \iint_S (\nabla\times\mathbf{F})\cdot d\mathbf{S}$$
+  <p>结尾文本。</p>
+</article>
+</body>
+</html>
