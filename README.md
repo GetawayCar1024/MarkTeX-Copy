@@ -8,7 +8,7 @@ Chrome / Edge 扩展：把网页和 PDF 的选中内容复制为 **Markdown** �
 
 <p>
   <img src="docs/popup-light.png" width="280" alt="浅色模式">
-  <img src="docs/popup-dark.png" width="280" alt="深色模式">
+  <img src="docs/popup-dark-zh.png" width="280" alt="深色模式">
 </p>
 
 ## 安装
