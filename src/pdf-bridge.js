@@ -7,6 +7,15 @@
   const CCM = (globalThis.__CCM = globalThis.__CCM || {});
   CCM.isPdfViewerPage = true;
 
+  // 页面画布至少按 2 倍分辨率渲染（PDF.js 按 devicePixelRatio 决定画布分辨率）。
+  // 屏幕缩放为 100% / 125% / 150% 或阅读器缩放为 130% 等非整数倍时，按屏幕分辨率渲染的文字缺少字体微调，
+  // 中西文粗细、大小看起来不一致；超采样后再缩小显示，与浏览器自带阅读器的效果接近。
+  try {
+    const desc = Object.getOwnPropertyDescriptor(Window.prototype, 'devicePixelRatio') || Object.getOwnPropertyDescriptor(window, 'devicePixelRatio');
+    const real = desc && desc.get ? () => desc.get.call(window) : () => 1;
+    Object.defineProperty(window, 'devicePixelRatio', { configurable: true, get: () => Math.max(2, real()) });
+  } catch (_) { /* ignore */ }
+
   const params = new URLSearchParams(location.search);
   const embedded = params.get('embed') === '1' && window.parent !== window;
   const src = params.get('src');
@@ -154,6 +163,14 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
     wrap.append(btn, menu);
     right.insertBefore(wrap, right.firstChild);
+
+    // 搜索按钮（连同查找栏）移到右侧、MarkTeX 按钮之前
+    const find = document.getElementById('viewFindButton');
+    const findWrap = find && find.closest('.toolbarButtonWithContainer');
+    if (findWrap) {
+      findWrap.classList.add('marktex-find');
+      right.insertBefore(findWrap, wrap);
+    }
   }
 
   document.addEventListener('webviewerloaded', () => {
@@ -168,6 +185,9 @@
     app.initializedPromise.then(() => {
       buildToolbar();
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
+      // 侧栏视图切换按钮的图标随当前视图变化（见 pdf-viewer.css 中的 data-view）
+      const setView = (view) => { const vm = document.getElementById('viewsManager'); if (vm && view) vm.dataset.view = String(view); };
+      app.eventBus.on('sidebarviewchanged', ({ view }) => setView(view));
       // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式
       app.eventBus.on('outlineloaded', () => {
         if (!CCM.texLiteHtml) return;

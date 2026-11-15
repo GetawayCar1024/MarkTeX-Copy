@@ -370,3 +370,154 @@ select {
 .tx-frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; font-size: 0.8em; line-height: 1.1; margin: 0 0.1em; }
 .tx-frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 0.1em; }
 .tx-sqrt { border-top: 1px solid currentColor; padding-top: 0.05em; }
+
+/* ---------- 图标：统一的线性图标（src/reader-icons，由 tools/build-reader-icons.cjs 生成），风格与扩展弹窗一致 ---------- */
+:root {
+  --toolbar-icon-bg-color: light-dark(rgba(60, 60, 67, 0.88), rgba(235, 235, 245, 0.86));
+  --toolbar-icon-hover-bg-color: light-dark(#1c1c1e, #ffffff);
+  --toolbar-icon-opacity: 1;
+  --doorhanger-icon-opacity: 1;
+
+  --toolbarButton-viewsManagerToggle-icon: url(/src/reader-icons/sidebar.svg);
+  --toolbarButton-search-icon: url(/src/reader-icons/search.svg);
+  --toolbarButton-pageUp-icon: url(/src/reader-icons/chevron-up.svg);
+  --toolbarButton-pageDown-icon: url(/src/reader-icons/chevron-down.svg);
+  --toolbarButton-zoomOut-icon: url(/src/reader-icons/minus.svg);
+  --toolbarButton-zoomIn-icon: url(/src/reader-icons/plus.svg);
+  --toolbarButton-editorHighlight-icon: url(/src/reader-icons/highlight.svg);
+  --toolbarButton-editorFreeText-icon: url(/src/reader-icons/text.svg);
+  --toolbarButton-editorInk-icon: url(/src/reader-icons/ink.svg);
+  --toolbarButton-editorStamp-icon: url(/src/reader-icons/stamp.svg);
+  --toolbarButton-editorSignature-icon: url(/src/reader-icons/signature.svg);
+  --toolbarButton-editorComment-icon: url(/src/reader-icons/comment.svg);
+  --toolbarButton-print-icon: url(/src/reader-icons/print.svg);
+  --toolbarButton-download-icon: url(/src/reader-icons/download.svg);
+  --toolbarButton-openFile-icon: url(/src/reader-icons/open.svg);
+  --toolbarButton-presentationMode-icon: url(/src/reader-icons/present.svg);
+  --toolbarButton-bookmark-icon: url(/src/reader-icons/bookmark.svg);
+  --toolbarButton-secondaryToolbarToggle-icon: url(/src/reader-icons/more.svg);
+  --toolbarButton-menuArrow-icon: url(/src/reader-icons/chevron-down-small.svg);
+  --toolbarButton-viewThumbnail-icon: url(/src/reader-icons/grid.svg);
+  --toolbarButton-viewOutline-icon: url(/src/reader-icons/outline.svg);
+  --toolbarButton-viewAttachments-icon: url(/src/reader-icons/attach.svg);
+  --toolbarButton-viewLayers-icon: url(/src/reader-icons/layers.svg);
+  --toolbarButton-currentOutlineItem-icon: url(/src/reader-icons/locate.svg);
+  --findbarButton-previous-icon: url(/src/reader-icons/chevron-up.svg);
+  --findbarButton-next-icon: url(/src/reader-icons/chevron-down.svg);
+  --secondaryToolbarButton-firstPage-icon: url(/src/reader-icons/first-page.svg);
+  --secondaryToolbarButton-lastPage-icon: url(/src/reader-icons/last-page.svg);
+  --secondaryToolbarButton-rotateCcw-icon: url(/src/reader-icons/rotate-ccw.svg);
+  --secondaryToolbarButton-rotateCw-icon: url(/src/reader-icons/rotate-cw.svg);
+  --secondaryToolbarButton-selectTool-icon: url(/src/reader-icons/select.svg);
+  --secondaryToolbarButton-handTool-icon: url(/src/reader-icons/hand.svg);
+  --secondaryToolbarButton-scrollPage-icon: url(/src/reader-icons/scroll-page.svg);
+  --secondaryToolbarButton-scrollVertical-icon: url(/src/reader-icons/scroll-vertical.svg);
+  --secondaryToolbarButton-scrollHorizontal-icon: url(/src/reader-icons/scroll-horizontal.svg);
+  --secondaryToolbarButton-scrollWrapped-icon: url(/src/reader-icons/scroll-wrapped.svg);
+  --secondaryToolbarButton-spreadNone-icon: url(/src/reader-icons/spread-none.svg);
+  --secondaryToolbarButton-spreadOdd-icon: url(/src/reader-icons/spread-odd.svg);
+  --secondaryToolbarButton-spreadEven-icon: url(/src/reader-icons/spread-even.svg);
+  --secondaryToolbarButton-documentProperties-icon: url(/src/reader-icons/info.svg);
+  --menuitem-checkmark-icon: url(/src/reader-icons/check.svg);
+  --treeitem-expanded-icon: url(/src/reader-icons/chevron-down-small.svg);
+  --treeitem-collapsed-icon: url(/src/reader-icons/chevron-right.svg);
+}
+
+#viewsManager {
+  --views-manager-button-icon: url(/src/reader-icons/grid.svg);
+  --views-manager-button-arrow-icon: url(/src/reader-icons/chevron-down-small.svg);
+  --current-outline-button-icon: url(/src/reader-icons/locate.svg);
+  --menuitem-thumbnailsView-icon: url(/src/reader-icons/grid.svg);
+  --menuitem-outlinesView-icon: url(/src/reader-icons/outline.svg);
+  --menuitem-attachmentsView-icon: url(/src/reader-icons/attach.svg);
+  --menuitem-layersView-icon: url(/src/reader-icons/layers.svg);
+  --close-button-icon: url(/src/reader-icons/close.svg);
+  --menuitem-checkmark-icon: url(/src/reader-icons/check.svg);
+}
+
+/* 视图切换按钮的图标随当前视图变化（data-view 由 pdf-bridge.js 设置：1 页面，2 大纲，3 附件，4 图层） */
+#viewsManager[data-view="2"] { --views-manager-button-icon: url(/src/reader-icons/outline.svg); }
+#viewsManager[data-view="3"] { --views-manager-button-icon: url(/src/reader-icons/attach.svg); }
+#viewsManager[data-view="4"] { --views-manager-button-icon: url(/src/reader-icons/layers.svg); }
+
+/* 图标按比例完整显示（PDF.js 默认 mask-size: cover，非正方形区域会裁掉左右两侧） */
+.toolbarButton::before,
+.secondaryToolbarButton::before,
+.dropdownToolbarButton::after,
+.treeItemToggler::before,
+#viewsManager button::before,
+#viewsManager button::after,
+#viewsManager .popupMenu button::before,
+#viewsManager .popupMenu button::after {
+  -webkit-mask-size: contain !important;
+  mask-size: contain !important;
+  -webkit-mask-position: center !important;
+  mask-position: center !important;
+  -webkit-mask-repeat: no-repeat !important;
+  mask-repeat: no-repeat !important;
+}
+
+/* 工具栏中的竖向分隔线更淡，按钮悬停为 5px 圆角的浅灰底 */
+.verticalToolbarSeparator {
+  background-color: var(--separator-color) !important;
+  opacity: 0.7;
+}
+
+.treeView,
+#outlinesView,
+#attachmentsView,
+#layersView {
+  --treeitem-expanded-icon: url(/src/reader-icons/chevron-down-small.svg) !important;
+  --treeitem-collapsed-icon: url(/src/reader-icons/chevron-right.svg) !important;
+}
+
+.treeItemToggler::before {
+  background-color: var(--toolbar-icon-bg-color) !important;
+}
+
+/* 图片占位元素（src/pdf-glyphs.js）：透明，仅用于选中与复制 */
+.textLayer .marktex-image {
+  cursor: default;
+}
+
+/* ---------- 工具栏布局 ---------- */
+/* 上一页 / 下一页、缩小 / 放大之间不需要分隔线 */
+#toolbarViewer .splitToolbarButtonSeparator {
+  display: none !important;
+}
+
+/* 搜索按钮移到右侧后，查找栏向左展开 */
+.marktex-find {
+  position: relative;
+}
+
+.marktex-find #findbar {
+  inset-inline-start: auto !important;
+  inset-inline-end: 0 !important;
+}
+
+/* 页码输入框：居中的小胶囊，与总页数组成“3 / 12” */
+#pageNumber {
+  width: 38px !important;
+  height: 24px !important;
+  padding: 0 4px !important;
+  text-align: center !important;
+  font: 500 13px/24px var(--marktex-font) !important;
+  font-variant-numeric: tabular-nums;
+  background-color: var(--field-bg-color) !important;
+  border-radius: 6px !important;
+}
+
+#pageNumber::-webkit-inner-spin-button,
+#pageNumber::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+#numPages {
+  margin-inline-start: 5px !important;
+  padding: 0 !important;
+  color: light-dark(rgba(60, 60, 67, 0.6), rgba(235, 235, 245, 0.6)) !important;
+  font: 13px/1 var(--marktex-font) !important;
+  font-variant-numeric: tabular-nums;
+}

@@ -347,6 +347,7 @@
     const [, , c, d, e, f] = item.transform;
     const s = Math.hypot(c, d) || item.height || 10;
     const g = item.__glyph;
+    if (g && g.image) return { str: '', image: g.image, x0: g.x, x1: g.x1, y: g.y, s: 10, page: pn, order, font: '' };
     if (g && g.bullet) {
       // 画出来的列表符号：位置、字号在 richLines 中对齐到同一行的文字
       return { str: g.str, x0: g.x, x1: g.x1, y: g.y, cy: g.cy, s: g.s, page: pn, order, font: '', bullet: true, isExt: false, mathFont: false, italic: false };
@@ -434,7 +435,7 @@
       }
       const rows = grid.map((row) => row.map((cell) => {
         if (!cell.some((p) => p.str.trim())) return [];
-        const ls = richLines(cell, { noTables: true, bodyS });
+        const ls = richLines(cell, { noTables: true, noImages: true, bodyS });
         return ls.reduce((acc, l) => (acc.length ? joinParts(acc, l.parts) : l.parts.map((x) => ({ ...x }))), []);
       })).filter((row) => row.some((cell) => cell.length));
       if (rows.reduce((a, row) => a + row.filter((c) => c.length).length, 0) < 2) continue;
@@ -452,8 +453,15 @@
 
   function richLines(pieces, opts = {}) {
     const byPage = new Map();
+    // 选中的图片（文本层中的图片占位元素）单独记录，不参与分行
+    const picked = new Map();
     for (const p of pieces) {
       if (!byPage.has(p.page)) byPage.set(p.page, []);
+      if (p.image) {
+        if (!picked.has(p.page)) picked.set(p.page, new Set());
+        picked.get(p.page).add(p.image);
+        continue;
+      }
       byPage.get(p.page).push(p);
     }
     const lines = [];
@@ -620,9 +628,78 @@
         });
       }
     }
-    lines.sort((a, b) => a.page - b.page || a.order - b.order);
-    for (const l of lines) if (!l.table) buildParts(l);
+    if (!opts.noImages) addImages(lines, byPage, opts.fullPages, picked);
+    for (const l of lines) if (!l.table && !l.image) buildParts(l);
+    sortLines(lines);
     return lines.filter((l) => l.text);
+  }
+
+  // 页面中的图片作为单独的“行”加入：整页选中时全部加入，否则只加入位于选中文字上下范围内的
+  function addImages(lines, byPage, fullPages, picked) {
+    const pics = CCM.pdfImages || {};
+    const pages = new Set([...byPage.keys(), ...(fullPages || [])]);
+    for (const page of pages) {
+      const list = pics[page];
+      const info = CCM.pdfPages && CCM.pdfPages[page];
+      if (!list || !list.length || !info) continue;
+      const own = lines.filter((l) => l.page === page);
+      const full = fullPages && fullPages.has(page);
+      const top = own.length ? Math.min(...own.map((l) => l.top)) : 0;
+      const bottom = own.length ? Math.max(...own.map((l) => l.bottom)) : 0;
+      // 文本层中已有图片占位元素时，以是否选中占位元素为准；否则按图片是否位于选中文字的上下范围内
+      const hasSpans = typeof document !== 'undefined' && !!document.querySelector(`.page[data-page-number="${page}"] .textLayer .marktex-image`);
+      const sel = (picked && picked.get(page)) || new Set();
+      for (const img of list) {
+        const t = info.top - img.y1;
+        const b = info.top - img.y0;
+        const mid = (t + b) / 2;
+        if (!full && !sel.has(img) && (hasSpans || !(mid > top && mid < bottom))) continue;
+        const s = own.length ? median(own.map((l) => l.s)) : 10;
+        lines.push({
+          page, image: img, items: [], parts: [], text: '▣', order: Infinity,
+          s, B: img.y0, h: s, top: t, bottom: b, left: img.x0, right: img.x1, pageTop: 0, pageH: info.height,
+        });
+      }
+    }
+  }
+
+  // 阅读顺序：单栏页面按位置从上到下（PDF 内部的文字顺序不一定是阅读顺序）；多栏页面保留内部顺序
+  function sortLines(lines) {
+    const multi = new Set();
+    const byPage = new Map();
+    for (const l of lines) {
+      if (!byPage.has(l.page)) byPage.set(l.page, []);
+      byPage.get(l.page).push(l);
+    }
+    for (const [page, ls] of byPage) {
+      const text = ls.filter((l) => !l.image && !l.table);
+      const W = Math.max(...text.map((l) => l.right)) - Math.min(...text.map((l) => l.left));
+      let pairs = 0;
+      for (let i = 0; i < text.length; i++) {
+        for (let j = i + 1; j < text.length; j++) {
+          const a = text[i];
+          const b = text[j];
+          if (Math.abs(a.top - b.top) > 0.5 * Math.max(a.h, b.h)) continue;
+          const wide = (l) => l.right - l.left > 0.25 * W;
+          if (wide(a) && wide(b) && (a.right < b.left || b.right < a.left)) pairs++;
+        }
+      }
+      if (pairs >= 3) multi.add(page);
+      // 多栏页面：图片放在其下方第一行之前
+      if (multi.has(page)) {
+        for (const im of ls.filter((l) => l.image)) {
+          const below = text.filter((l) => l.top >= im.top).sort((a, b) => a.top - b.top)[0];
+          im.order = below ? below.order - 0.5 : Math.max(0, ...text.map((l) => l.order)) + 0.5;
+        }
+      }
+    }
+    lines.sort((a, b) => {
+      if (a.page !== b.page) return a.page - b.page;
+      if (multi.has(a.page)) return a.order - b.order;
+      // 同一行上的内容（上下位置相近）按从左到右
+      if (Math.abs(a.top - b.top) < 0.3 * Math.min(a.h, b.h)) return a.left - b.left;
+      return a.top - b.top;
+    });
   }
 
   // ---------- 精确模式：一行内区分正文与公式 ----------
@@ -861,7 +938,7 @@
     for (let i = 1; i < lines.length; i++) {
       const a = lines[i - 1];
       const b = lines[i];
-      if (a.page === b.page && !a.display && !b.display && Math.abs(a.h - bodyH) < bodyH * 0.15 && Math.abs(b.h - bodyH) < bodyH * 0.15) {
+      if (a.page === b.page && !a.display && !b.display && !a.image && !b.image && !a.table && !b.table && Math.abs(a.h - bodyH) < bodyH * 0.15 && Math.abs(b.h - bodyH) < bodyH * 0.15) {
         const g = a.B != null && b.B != null ? a.B - b.B : b.top - a.top;
         if (g > 0) gaps.push(g);
       }
@@ -889,6 +966,7 @@
     };
     const kindOf = (l) => {
       if (l.table) return { type: 'table' };
+      if (l.image) return { type: 'image' };
       if (l.mono) return { type: 'code' };
       if (l.display && centered(l)) return { type: 'display' };
       const ratio = l.h / bodyH;
@@ -928,6 +1006,11 @@
         blocks.push(cur);
         continue;
       }
+      if (k.type === 'image') {
+        cur = { type: 'image', line: l };
+        blocks.push(cur);
+        continue;
+      }
       // 代码块：连续的等宽字体行（允许中间有一个空行，或跨页继续）
       if (k.type === 'code') {
         if (cur && cur.type === 'code' && prev && (prev.page !== l.page || l.top - prev.top < lineGap * 2.6)) cur.lines.push(l);
@@ -939,12 +1022,13 @@
         cur.parts = joinParts(cur.parts, l.parts);
         continue;
       }
-      let fresh = !cur || cur.type === 'display' || cur.type === 'code' || cur.type === 'table' || k.type === 'ul' || k.type === 'ol' || k.forceNew ||
+      let fresh = !cur || cur.type === 'display' || cur.type === 'code' || cur.type === 'table' || cur.type === 'image' || k.type === 'ul' || k.type === 'ol' || k.forceNew ||
         (k.type === 'math') !== (cur.type === 'math') || (k.type === 'h') !== (cur.type === 'h');
       if (!fresh && prev) {
         const curText = cur.parts.map((p) => (p.t === 'text' ? p.s : '$')).join('');
         if (prev.page !== l.page) {
-          fresh = SENTENCE_END.test(curText); // 跨页：上一页最后一行不是句末才接续
+          // 跨页：上一页最后一行不是句末才接续；标题不跨页接续
+          fresh = SENTENCE_END.test(curText) || k.type === 'h';
         } else {
           // 行距按基线计算（含公式的行顶部更高，用行顶会高估行距）
           const g = prev.B != null && l.B != null ? prev.B - l.B : l.top - prev.top;
@@ -1058,7 +1142,14 @@
         closeTo(0);
       }
       let line;
-      if (b.type === 'table') {
+      if (b.type === 'image') {
+        // 图片数据只在异步生成时读取（见 pdfSelectionAsync）；没有数据时跳过
+        const src = b.line.src;
+        if (!src) continue;
+        const w = Math.round(b.line.right - b.line.left);
+        line = `![](${src})`;
+        html.push(`<p><img src="${src}" width="${Math.round(w * 4 / 3)}" alt=""></p>`);
+      } else if (b.type === 'table') {
         const n = Math.max(...b.rows.map((r) => r.length));
         const rows = b.rows.map((r) => Array.from({ length: n }, (_, i) => r[i] || []));
         // 表头本身就会加粗显示：整行都是粗体时去掉粗体标记
@@ -1203,8 +1294,77 @@
     const { from, to } = selectionPages(range);
     if (!from) return false;
     for (let n = from + 1; n < to; n++) if (!pageTagged(n)) return true;
+    // 选区所在页面有图片：图片数据需要异步读取
+    const pics = CCM.pdfImages || {};
+    for (let n = from; n <= to; n++) if (pics[n] && pics[n].length) return true;
     return false;
   };
+
+  // 内嵌图片的数据控制在约 100 KB 以内：过长的 data URL 在 Typora 等编辑器中无法显示。先降低画质，再缩小尺寸
+  const MAX_DATA_URL = 100 * 1024;
+  function compact(canvas) {
+    let src = canvas;
+    for (let round = 0; round < 6; round++) {
+      for (const q of [0.88, 0.78, 0.68]) {
+        const url = src.toDataURL('image/jpeg', q);
+        if (url.length <= MAX_DATA_URL) return url;
+      }
+      const next = document.createElement('canvas');
+      next.width = Math.max(1, Math.round(src.width * 0.8));
+      next.height = Math.max(1, Math.round(src.height * 0.8));
+      const ctx = next.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src, 0, 0, next.width, next.height);
+      src = next;
+    }
+    return src.toDataURL('image/jpeg', 0.68);
+  }
+
+  // 图片：把页面渲染到画布上再裁出图片区域（与阅读器中看到的一致，也不依赖图片的编码格式）
+  async function imageSources(lines) {
+    const app = globalThis.PDFViewerApplication;
+    const renders = new Map();
+    const renderPage = (n) => {
+      if (!renders.has(n)) {
+        renders.set(n, (async () => {
+          const page = await app.pdfDocument.getPage(n);
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.ceil(viewport.width);
+          canvas.height = Math.ceil(viewport.height);
+          const ctx = canvas.getContext('2d');
+          await page.render({ canvasContext: ctx, canvas, viewport }).promise;
+          return { canvas, viewport };
+        })());
+      }
+      return renders.get(n);
+    };
+    for (const l of lines) {
+      if (!l.image) continue;
+      if (l.image.src) { l.src = l.image.src; continue; }
+      try {
+        const { canvas, viewport } = await renderPage(l.page);
+        const [a, b] = viewport.convertToViewportPoint(l.image.x0, l.image.y0);
+        const [c, d] = viewport.convertToViewportPoint(l.image.x1, l.image.y1);
+        const x = Math.max(0, Math.floor(Math.min(a, c)));
+        const y = Math.max(0, Math.floor(Math.min(b, d)));
+        const w = Math.min(canvas.width - x, Math.ceil(Math.abs(c - a)));
+        const h = Math.min(canvas.height - y, Math.ceil(Math.abs(d - b)));
+        if (w < 2 || h < 2) continue;
+        const out = document.createElement('canvas');
+        out.width = w;
+        out.height = h;
+        const octx = out.getContext('2d');
+        octx.fillStyle = '#fff';
+        octx.fillRect(0, 0, w, h);
+        octx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
+        l.src = l.image.src = compact(out);
+      } catch (e) {
+        console.warn('[marktex-copy] image export failed', e);
+      }
+    }
+    renders.clear();
+  }
   CCM.pdfSelectionPageCount = (range) => {
     const { from, to } = selectionPages(range);
     return from ? to - from + 1 : 0;
@@ -1260,8 +1420,12 @@
     }
     pieces.forEach((p, i) => { p.order = i; });
     if (!pieces.length) return null;
-    const lines = richLines(pieces);
+    // 整页选中的页面：页面中的图片全部加入
+    const fullPages = new Set();
+    for (let n = from; n <= to; n++) if (all || (n !== from && n !== to)) fullPages.add(n);
+    const lines = richLines(pieces, { fullPages });
     if (!lines.length) return null;
+    await imageSources(lines);
     const out = render(buildBlocks(dropRunningHeaders(lines)), settings);
     out.rebuilt = true;
     out.hasMath = false;

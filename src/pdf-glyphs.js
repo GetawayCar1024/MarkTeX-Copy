@@ -103,6 +103,7 @@
     const rects = [];
     const strokes = [];
     const dots = [];
+    const images = [];
     let ctm = [1, 0, 0, 1, 0, 0];
     const stack = [];
     for (let i = 0; i < ops.fnArray.length; i++) {
@@ -111,7 +112,12 @@
       if (fn === OPS.save) stack.push(ctm);
       else if (fn === OPS.restore) ctm = stack.pop() || ctm;
       else if (fn === OPS.transform) ctm = mul(ctm, a);
-      else if (fn === OPS.constructPath) {
+      else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageXObjectRepeat) {
+        // 图片：单位正方形经当前变换后的外框
+        const xs = [ctm[4], ctm[4] + ctm[0], ctm[4] + ctm[2], ctm[4] + ctm[0] + ctm[2]];
+        const ys = [ctm[5], ctm[5] + ctm[1], ctm[5] + ctm[3], ctm[5] + ctm[1] + ctm[3]];
+        images.push({ x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) });
+      } else if (fn === OPS.constructPath) {
         const data = a && a[1] && a[1][0];
         const mm = a && a[2];
         if (!data || !mm) continue;
@@ -150,6 +156,25 @@
     const tables = findTables(strokes);
     CCM.pdfTables = CCM.pdfTables || {};
     if (page.pageNumber) CCM.pdfTables[page.pageNumber] = tables;
+    // 图片（截图、插图）：去掉很小的（图标、装饰）、铺满整页的（扫描件的底图）和重复的
+    const [vx0, vy0, vx1, vy1] = page.view;
+    const pageArea = (vx1 - vx0) * (vy1 - vy0);
+    const pics = [];
+    for (const im of images) {
+      const w = im.x1 - im.x0;
+      const h = im.y1 - im.y0;
+      if (w < 24 || h < 24 || w * h > 0.85 * pageArea) continue;
+      if (pics.some((q) => Math.abs(q.x0 - im.x0) < 1 && Math.abs(q.y0 - im.y0) < 1 && Math.abs(q.x1 - im.x1) < 1 && Math.abs(q.y1 - im.y1) < 1)) continue;
+      // 被另一张图片完全包含的（例如截图上叠加的小图）并入外层图片
+      if (pics.some((q) => q.x0 <= im.x0 + 1 && q.x1 >= im.x1 - 1 && q.y0 <= im.y0 + 1 && q.y1 >= im.y1 - 1)) continue;
+      for (let k = pics.length - 1; k >= 0; k--) {
+        const q = pics[k];
+        if (im.x0 <= q.x0 + 1 && im.x1 >= q.x1 - 1 && im.y0 <= q.y0 + 1 && im.y1 >= q.y1 - 1) pics.splice(k, 1);
+      }
+      pics.push(im);
+    }
+    CCM.pdfImages = CCM.pdfImages || {};
+    if (page.pageNumber) CCM.pdfImages[page.pageNumber] = pics;
     // 列表符号：字号按符号直径估算（之后在 pdf-text.js 中对齐到同一行的文字）
     const bullets = dots.map((d) => {
       const s = (d.x1 - d.x0) * 3;
@@ -283,12 +308,41 @@
     return plan;
   };
 
+  // 图片占位元素的选中底色范围由字体的上下伸部决定（通常大于 1em），会超出图片。
+  // 按实际测得的文字区域调整字号和位置，使选中范围正好覆盖图片。比例与缩放无关，只需调整一次
+  function fitImageSpans(div) {
+    const layer = div.getBoundingClientRect();
+    if (!layer.height) return;
+    for (const span of div.querySelectorAll('.marktex-image')) {
+      const text = span.firstChild;
+      if (!text) continue;
+      const box = span.getBoundingClientRect(); // 行框：高度 = 字号 = 图片高度
+      const r = document.createRange();
+      r.selectNodeContents(span);
+      const area = r.getBoundingClientRect(); // 文字区域：即选中底色的范围
+      if (!(box.height > 0 && area.height > 0)) continue;
+      const k = box.height / area.height;
+      const fh = parseFloat(span.style.getPropertyValue('--font-height')) || 0;
+      if (!fh || Math.abs(k - 1) < 0.01) continue;
+      span.style.setProperty('--font-height', `${(fh * k).toFixed(3)}px`);
+      span.style.setProperty('--scale-x', String((parseFloat(span.style.getPropertyValue('--scale-x')) / k).toFixed(4)));
+      const area2 = r.getBoundingClientRect();
+      const shift = (area2.top - box.top) / layer.height * 100;
+      span.style.top = `${(parseFloat(span.style.top) - shift).toFixed(3)}%`;
+    }
+  }
+
   // 在已渲染的文本层中插入透明的公式字形，使其可以被选中、全选和复制
   CCM.pdfInjectGlyphs = async (pageNumber, view) => {
     const page = view && view.pdfPage;
     const div = view && view.textLayer && view.textLayer.div;
     if (!page || !div) return 0;
-    const { items } = await CCM.pdfGlyphsFor(page);
+    const { items: glyphs } = await CCM.pdfGlyphsFor(page);
+    // 图片也放一个透明的占位元素（宽高与图片相同），使图片可以被选中、显示选中底色，并决定复制时是否包含该图片
+    const pics = ((CCM.pdfImages || {})[pageNumber] || []).map((im) => ({
+      str: '\u2003', image: im, variant: 'image', x: im.x0, x1: im.x1, y: im.y0, s: im.y1 - im.y0,
+    }));
+    const items = glyphs.concat(pics);
     if (!items.length || !div.isConnected) return 0;
     if (div.__ccmGlyphs) return div.__ccmGlyphs;
     const [px0, , px1, py1] = page.view;
@@ -298,26 +352,33 @@
       const t = s.__ccmItem.transform;
       return { x: t[4], y: t[5], s: Math.hypot(t[2], t[3]) || 10, ref: s };
     });
-    const plan = CCM.mergeGlyphOrder(texts, items.map((g) => ({ x: g.x, y: g.y, s: g.s, ref: g })));
+    // 阅读顺序：图片按其上边缘排在下方文字之前
+    const plan = CCM.mergeGlyphOrder(texts, items.map((g) => (g.image ? { x: g.x, y: g.image.y1 - 1, s: 10, ref: g } : { x: g.x, y: g.y, s: g.s, ref: g })));
     const end = div.querySelector('.endOfContent');
     for (const { glyph: { ref: g }, before } of plan) {
       const span = document.createElement('span');
       const item = CCM.glyphItem(g);
       span.textContent = item.str;
-      span.className = 'marktex-glyph';
+      span.className = g.image ? 'marktex-image' : 'marktex-glyph';
       span.setAttribute('role', 'presentation');
-      const top = g.rule ? g.y + 0.05 * g.s : g.y + 0.78 * g.s;
+      const top = g.image ? g.image.y1 : g.rule ? g.y + 0.05 * g.s : g.y + 0.78 * g.s;
       span.style.left = `${((100 * (g.x - px0)) / W).toFixed(3)}%`;
       span.style.top = `${((100 * (py1 - top)) / H).toFixed(3)}%`;
       span.style.setProperty('--font-height', `${g.s.toFixed(2)}px`);
-      const est = 0.55 * g.s * Math.max(1, Array.from(item.str).length);
-      span.style.setProperty('--scale-x', String(Math.max(0.2, Math.min(4, (g.x1 - g.x) / est)).toFixed(3)));
+      if (g.image) {
+        // 全角空格宽 1em：横向缩放到图片宽度
+        span.style.setProperty('--scale-x', String(((g.x1 - g.x) / g.s).toFixed(4)));
+      } else {
+        const est = 0.55 * g.s * Math.max(1, Array.from(item.str).length);
+        span.style.setProperty('--scale-x', String(Math.max(0.2, Math.min(4, (g.x1 - g.x) / est)).toFixed(3)));
+      }
       span.__ccmItem = item;
       span.__ccmPage = pageNumber;
       const ref = before ? before.ref : end;
       if (ref && ref.parentNode) ref.parentNode.insertBefore(span, ref);
       else div.appendChild(span);
     }
+    fitImageSpans(div);
     div.__ccmGlyphs = items.length;
     return items.length;
   };
