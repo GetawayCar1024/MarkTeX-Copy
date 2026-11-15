@@ -139,10 +139,12 @@
   function pre(node, ctx) {
     const codes = node.querySelectorAll('code');
     const src = codes.length === 1 ? codes[0] : node;
-    const lang = langOf(codes[0]) || langOf(node) || langOf(node.parentElement) ||
+    let lang = langOf(codes[0]) || langOf(node) || langOf(node.parentElement) ||
       langOf(node.parentElement && node.parentElement.parentElement);
     const text = rawText(src, ctx.st).replace(/\n+$/, '');
     if (ctx.table || ctx.inline) return inlineCode(text);
+    // 页面没有标注语言时，按内容推断（与 PDF 相同的规则，拿不准就留空）
+    if (!lang && CCM.guessCodeLang) lang = CCM.guessCodeLang(text);
     const runs = text.match(/`{3,}/g);
     const fence = '`'.repeat(runs ? Math.max(...runs.map((r) => r.length)) + 1 : 3);
     ctx.st.pres.push(fence + lang + '\n' + text + '\n' + fence);
@@ -226,14 +228,24 @@
       for (let p = tr.parentElement; p && p !== node; p = p.parentElement) if (p.localName === 'table') return false;
       return true;
     });
+    // 合并单元格（rowspan / colspan）：被合并的位置留空，后面的单元格不错位
+    const pending = []; // pending[col] = 还要占用的行数
     const matrix = rows.map((tr) => {
       const r = [];
+      const take = () => {
+        while (pending[r.length] > 0) { pending[r.length]--; r.push(''); }
+      };
       for (const cell of tr.children) {
         if (cell.localName !== 'td' && cell.localName !== 'th') continue;
-        r.push(cellMd(cell, ctx));
-        const span = parseInt(cell.getAttribute('colspan'), 10) || 1;
-        for (let i = 1; i < span; i++) r.push('');
+        take();
+        const cs = parseInt(cell.getAttribute('colspan'), 10) || 1;
+        const rs = parseInt(cell.getAttribute('rowspan'), 10) || 1;
+        for (let i = 0; i < cs; i++) {
+          if (rs > 1) pending[r.length] = rs - 1;
+          r.push(i ? '' : cellMd(cell, ctx));
+        }
       }
+      take();
       return r;
     }).filter((r) => r.length);
     if (!matrix.length) return kids(node, ctx);

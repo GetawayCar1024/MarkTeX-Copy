@@ -361,3 +361,12 @@ select {
   font-weight: 600;
   text-decoration: none;
 }
+
+/* 大纲标题中的公式（src/tex-lite.js） */
+.tx-math { font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", "Times New Roman", serif; white-space: nowrap; }
+.tx-math i { font-style: italic; }
+.tx-math .tx-up { font-style: normal; }
+.tx-math sup, .tx-math sub { font-size: 0.72em; line-height: 0; }
+.tx-frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; font-size: 0.8em; line-height: 1.1; margin: 0 0.1em; }
+.tx-frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 0.1em; }
+.tx-sqrt { border-top: 1px solid currentColor; padding-top: 0.05em; }

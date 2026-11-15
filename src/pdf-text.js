@@ -9,7 +9,12 @@
 
   const CJK = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/;
   const SENTENCE_END = /[.。!?！？:：;；…]["”’)）\]]*$/;
-  const BULLET_RE = /^([•●○◦▪▫■□‣⁃∙·▸►\-–—*])\s+(.*)$/;
+  const BULLET_RE = /^([•●○◦▪▫■□‣⁃∙·▸►\-–—*∗])\s+(.*)$/;
+  const BULLET_CHAR = /^[•●○◦▪▫■□‣⁃∙▸►–—∗*]$/;
+  const MONO_FONT = /mono|consol|courier|menlo|monaco|lucida\s*console|lucidaconsole|sourcecode|inconsolata|firacode|fira\s*code|jetbrains|cascadia|sfmono/i;
+  // 粗体：字体名含 Bold 等，或中文排版中常用来表示加粗的黑体
+  const BOLD_FONT = /bold|heavy|black|semibold|demibold|simhei|heiti|黑体/i;
+  const EMPHASIS_DOTS = /^[·・•﹅﹆]+$/;
   const ORDERED_RE = /^(\d{1,3})[.)]\s+(.*)$/;
   const OTHER_ENUM_RE = /^(\(\d{1,3}\)|（\d{1,3}）|[（(][一二三四五六七八九十]+[)）]|[一二三四五六七八九十]+、|[a-zA-Z][.)]\s)/;
 
@@ -53,12 +58,13 @@
     if (FUNCS.has(str)) return '\\' + str;
     return join(Array.from(str).map(charTex));
   }
-  const texOf = (e) => (e.atom ? e.tex : texStr(e.str));
+  const texOf = (e) => (e.atom || e.tex != null ? e.tex : texStr(e.str));
 
   const RADICALS = new Set(Array.from('√∛∜'));
   const isRad = (e) => !e.atom && RADICALS.has((e.str || '').trim());
   // “虚拟基线”：TeX 的大型运算符（CMEX）和根号（CMSY √）的基线在字形顶部，字形向下悬挂
-  const vy = (e) => (e.atom ? e.y : e.isExt ? e.y - 0.9 * e.s : isRad(e) ? e.y - 0.84 * e.s : e.y);
+  // MathJax 字形（geo）的坐标是真实基线，不需要修正
+  const vy = (e) => (e.atom || e.geo ? e.y : e.isExt ? e.y - 0.9 * e.s : isRad(e) ? e.y - 0.84 * e.s : e.y);
 
   function refSize(els) {
     const sizes = els.filter((e) => !e.isExt && !isRad(e)).map((e) => e.s);
@@ -110,13 +116,44 @@
   }
 
   function parseMath(input, depth = 0) {
-    const els = input.filter((e) => e.atom || (e.str && e.str.trim()));
-    if (!els.length) return '';
-    if (depth > 8) return join([...els].sort((a, b) => a.x0 - b.x0).map(texOf));
-    const s = refSize(els);
+    const els = input.filter((e) => e.atom || e.rule || (e.str && e.str.trim()));
+    if (!els.length || els.every((e) => e.rule)) return '';
+    if (depth > 8) return join([...els].filter((e) => !e.rule).sort((a, b) => a.x0 - b.x0).map(texOf));
+    const s = refSize(els.filter((e) => !e.rule));
     const used = new Set();
     const atoms = [];
-    const pool = () => els.filter((e) => !used.has(e)).concat(atoms.filter((a) => !used.has(a)));
+    const pool = () => els.filter((e) => !used.has(e) && !e.rule).concat(atoms.filter((a) => !used.has(a)));
+
+    // 0) 横线（来自矢量公式）：根号横线 → \sqrt，分数线 → \frac，否则上 / 下划线。短的（内层的）先处理
+    const mid = (e) => (e.x0 + e.x1) / 2;
+    for (const r of els.filter((e) => e.rule).sort((a, b) => (a.x1 - a.x0) - (b.x1 - b.x0))) {
+      used.add(r);
+      const sz = r.s || s;
+      const within = (e) => mid(e) >= r.x0 - 0.05 * sz && mid(e) <= r.x1 + 0.05 * sz;
+      const surd = pool().find((e) => isRad(e) && Math.abs(e.x1 - r.x0) < 0.6 * sz && e.y < r.y + 0.2 * sz);
+      if (surd) {
+        // 被开方数：横线下方、不低于根号的基线（再往下是外层分数的分母等）
+        const body = pool().filter((e) => e !== surd && within(e) && vy(e) < r.y && vy(e) > r.y - 3 * sz && (!surd.geo || vy(e) > surd.y - 0.5 * sz));
+        // 根指数：根号左上方的小字号内容
+        const index = pool().filter((e) => e !== surd && !body.includes(e) && e.s < 0.8 * surd.s &&
+          e.x1 <= surd.x0 + 0.6 * surd.s && e.x0 >= surd.x0 - 1.2 * surd.s && vy(e) > surd.y);
+        [surd, ...body, ...index].forEach((e) => used.add(e));
+        const idx = index.length ? `[${parseMath(copyEls(index), depth + 1)}]` : '';
+        const bodyY = body.length ? baselineOf(body, refSize(body)) : r.y - 0.8 * sz;
+        atoms.push({ atom: true, base: true, tex: `\\sqrt${idx}{${parseMath(copyEls(body), depth + 1)}}`, x0: Math.min(surd.x0, ...index.map((e) => e.x0)), x1: r.x1, y: bodyY, s: sz });
+        continue;
+      }
+      const num = pool().filter((e) => within(e) && vy(e) > r.y && vy(e) < r.y + 2.8 * sz);
+      const den = pool().filter((e) => within(e) && vy(e) < r.y && vy(e) > r.y - 2.8 * sz);
+      if (!num.length && !den.length) continue;
+      [...num, ...den].forEach((e) => used.add(e));
+      let tex;
+      if (num.length && den.length) tex = `\\frac{${parseMath(copyEls(num), depth + 1)}}{${parseMath(copyEls(den), depth + 1)}}`;
+      else if (num.length) tex = `\\overline{${parseMath(copyEls(num), depth + 1)}}`;
+      else tex = `\\underline{${parseMath(copyEls(den), depth + 1)}}`;
+      // 数学轴在基线之上约 0.25em：分数的“基线”取横线下方 0.25em
+      atoms.push({ atom: true, tex, x0: r.x0, x1: r.x1, y: num.length && den.length ? r.y - 0.25 * sz : baselineOf(num.concat(den), sz), s: sz });
+    }
 
     // 1) 带上下限的大型运算符（上下限与运算符水平重叠，位于其上方 / 下方）
     for (const op of els) {
@@ -309,6 +346,32 @@
     const str = item.str;
     const [, , c, d, e, f] = item.transform;
     const s = Math.hypot(c, d) || item.height || 10;
+    const g = item.__glyph;
+    if (g && g.bullet) {
+      // 画出来的列表符号：位置、字号在 richLines 中对齐到同一行的文字
+      return { str: g.str, x0: g.x, x1: g.x1, y: g.y, cy: g.cy, s: g.s, page: pn, order, font: '', bullet: true, isExt: false, mathFont: false, italic: false };
+    }
+    if (g) {
+      // 由 pdf-glyphs.js 从矢量路径识别出的 MathJax 字形（位置、字号都是真实值）
+      const font = 'MathJax-' + g.variant;
+      return {
+        str: g.rule ? '' : g.str,
+        x0: g.x,
+        x1: g.x1,
+        y: g.y,
+        s: g.s,
+        page: pn,
+        order,
+        font,
+        geo: true,
+        rule: !!g.rule,
+        tex: g.tex,
+        base: !!g.base,
+        isExt: false,
+        mathFont: true,
+        italic: /italic|mathit/i.test(g.variant) || /[\u{1d434}-\u{1d467}\u{1d6e2}-\u{1d71b}]/u.test(g.str),
+      };
+    }
     const len = str.length || 1;
     const font = CCM.pdfFontName ? CCM.pdfFontName(pn, item.fontName) : '';
     return {
@@ -327,27 +390,123 @@
   }
 
   // ---------- 精确模式：分行 ----------
-  const boxOf = (p) => (p.isExt ? [p.y - 1.6 * p.s, p.y + 0.25 * p.s] : isRad(p) ? [p.y - 1.05 * p.s, p.y + 0.1 * p.s] : [p.y - 0.25 * p.s, p.y + 0.8 * p.s]);
+  const boxOf = (p) => {
+    if (p.rule) return [p.y - 0.1 * p.s, p.y + 0.1 * p.s];
+    if (p.geo) return BIG_OPS.has(p.str) || isRad(p) ? [p.y - 0.6 * p.s, p.y + 1.0 * p.s] : [p.y - 0.25 * p.s, p.y + 0.8 * p.s];
+    if (p.isExt) return [p.y - 1.6 * p.s, p.y + 0.25 * p.s];
+    if (isRad(p)) return [p.y - 1.05 * p.s, p.y + 0.1 * p.s];
+    return [p.y - 0.25 * p.s, p.y + 0.8 * p.s];
+  };
 
-  function richLines(pieces) {
+  // 把位于表格边框内的文字项取出，按单元格还原后作为一个“表格行”加入 lines；返回剩余的文字项
+  function extractTables(page, arr, bodyS, info, lines) {
+    const tables = (CCM.pdfTables && CCM.pdfTables[page]) || [];
+    if (!tables.length) return arr;
+    let rest = arr;
+    for (const t of tables) {
+      const inside = (p) => {
+        const cx = (p.x0 + p.x1) / 2;
+        const y = p.rule ? p.y : vy(p);
+        return cx > t.x0 && cx < t.x1 && y > t.y0 && y < t.y1;
+      };
+      const mine = rest.filter(inside);
+      if (!mine.length) continue;
+      const nr = t.rows.length - 1;
+      const nc = t.cols.length - 1;
+      const grid = Array.from({ length: nr }, () => Array.from({ length: nc }, () => []));
+      // 合并单元格：某一列中缺少的横线不算行分隔，内容归到合并区域的第一行
+      const colRows = t.cols.slice(0, -1).map((left, c) => {
+        const mid = (left + t.cols[c + 1]) / 2;
+        const segs = t.hsegs || [];
+        return t.rows.filter((y, i) => i === 0 || i === t.rows.length - 1 || !segs.length ||
+          segs.some((h) => Math.abs(h.y - y) < 1.5 && h.x0 <= mid && h.x1 >= mid));
+      });
+      for (const p of mine) {
+        const cx = (p.x0 + p.x1) / 2;
+        const y = p.rule ? p.y : vy(p);
+        let c = t.cols.findIndex((left, i) => i < nc && cx >= left && cx < t.cols[i + 1]);
+        if (c < 0) c = nc - 1;
+        const rows = colRows[c];
+        const k = rows.findIndex((top, i) => i < rows.length - 1 && y <= top && y > rows[i + 1]);
+        let r = k < 0 ? nr - 1 : t.rows.findIndex((top) => Math.abs(top - rows[k]) < 0.01);
+        if (r < 0 || r >= nr) r = nr - 1;
+        grid[r][c].push(p);
+      }
+      const rows = grid.map((row) => row.map((cell) => {
+        if (!cell.some((p) => p.str.trim())) return [];
+        const ls = richLines(cell, { noTables: true, bodyS });
+        return ls.reduce((acc, l) => (acc.length ? joinParts(acc, l.parts) : l.parts.map((x) => ({ ...x }))), []);
+      })).filter((row) => row.some((cell) => cell.length));
+      if (rows.reduce((a, row) => a + row.filter((c) => c.length).length, 0) < 2) continue;
+      rest = rest.filter((p) => !inside(p));
+      lines.push({
+        page, table: true, rows, items: mine, parts: [], text: '▦',
+        order: Math.min(...mine.map((p) => p.order)),
+        s: bodyS, B: t.y1, h: bodyS,
+        top: info.top - t.y1, bottom: info.top - t.y0, left: t.x0, right: t.x1,
+        pageTop: 0, pageH: info.height,
+      });
+    }
+    return rest;
+  }
+
+  function richLines(pieces, opts = {}) {
     const byPage = new Map();
     for (const p of pieces) {
       if (!byPage.has(p.page)) byPage.set(p.page, []);
       byPage.get(p.page).push(p);
     }
     const lines = [];
-    for (const [page, arr] of byPage) {
+    for (let [page, arr] of byPage) {
       const info = (CCM.pdfPages && CCM.pdfPages[page]) || { height: 0, top: 0 };
       const sizes = [];
       for (const p of arr) if (!p.isExt && p.str.trim()) for (let k = 0; k < Math.min(p.str.length, 50); k++) sizes.push(p.s);
-      const bodyS = median(sizes) || 10;
+      const bodyS = opts.bodyS || median(sizes) || 10;
+      // 着重号（中文排版中字下的小圆点）是装饰，不是内容
+      // 带着重号的文字按加粗处理（点在字的上方或下方，覆盖文字的大部分宽度）
+      const isDot = (p) => !p.geo && !p.rule && !p.bullet && EMPHASIS_DOTS.test(p.str.trim()) && p.s < 0.8 * bodyS;
+      const dotsHere = arr.filter(isDot);
+      if (dotsHere.length) {
+        for (const q of arr) {
+          if (isDot(q) || !q.str.trim() || q.geo) continue;
+          const cy = q.y + 0.35 * q.s;
+          const near = dotsHere.filter((d) => Math.abs(d.y + 0.3 * d.s - cy) < 1.1 * q.s && d.x0 >= q.x0 - 1 && d.x1 <= q.x1 + 1);
+          const n = Array.from(q.str.trim()).length;
+          if (near.length && near.length >= 0.7 * n) q.emph = true;
+        }
+      }
+      arr = arr.filter((p) => !isDot(p));
+      // 画出来的列表符号：对齐到右侧紧邻的文字所在的行；旁边没有文字的（如图表中的圆点）丢弃
+      arr = arr.filter((p) => {
+        if (!p.bullet) return true;
+        let best = null;
+        for (const q of arr) {
+          if (q.bullet || q.rule || !q.str.trim()) continue;
+          const gap = q.x0 - p.x1;
+          if (gap < -0.5 || gap > 3 * q.s || Math.abs(q.y + 0.33 * q.s - p.cy) > 0.5 * q.s) continue;
+          if (!best || gap < best.gap) best = { q, gap };
+        }
+        if (!best) return false;
+        p.y = best.q.y;
+        p.s = best.q.s;
+        return true;
+      });
+      // 有边框线的表格：表格内的内容按单元格分别还原
+      if (!opts.noTables) arr = extractTables(page, arr, bodyS, info, lines);
       // 小字号的数学内容（上下标、上下限、行内分式的分子分母）、大型运算符与根号不作为“行”的锚点，之后再分配到最近的行
-      const floating = (p) => p.isExt || isRad(p) ||
+      // 矢量公式的分数线：线上下方的分子、分母（即使是正常字号）也不作为锚点，之后并入分数线所在的行
+      const fracRules = arr.filter((r) => r.rule && !arr.some((e) => isRad(e) && Math.abs(e.x1 - r.x0) < 0.6 * r.s));
+      const inFraction = (p) => p.geo && fracRules.some((r) => {
+        const cx = (p.x0 + p.x1) / 2;
+        const d = vy(p) - r.y;
+        return cx > r.x0 && cx < r.x1 && Math.abs(d) < 2.5 * r.s && Math.abs(d + 0.25 * r.s) > 0.4 * p.s;
+      });
+      const floating = (p) => p.isExt || isRad(p) || p.rule || inFraction(p) ||
         (p.s < 0.88 * bodyS && !CJK.test(p.str) && (p.mathFont || p.italic || ROMAN_FONT.test(p.font) || !p.font));
 
       const anchors = [];
       const others = [];
-      for (const p of [...arr].sort((a, b) => a.order - b.order)) (p.str.trim() && !floating(p) ? anchors : others).push(p);
+      for (const p of [...arr].sort((a, b) => a.order - b.order)) ((p.str.trim() || p.rule) && !floating(p) ? anchors : others).push(p);
 
       // A) 同一基线、水平相邻的锚点组成一行（相隔很远的视为另一栏）
       let clusters = [];
@@ -405,14 +564,19 @@
         }
       }
       // C) 其余内容分配到垂直距离最近的行
+      // 横线（分数线、根号线）先分配，并把行的范围扩展到横线两端，使分子、分母都能归到这一行
       const leftovers = [];
-      for (const p of others) {
+      for (const p of [...others].sort((a, b) => !!b.rule - !!a.rule)) {
         const y = vy(p);
         let best = null;
         for (const c of clusters) {
           if (p.x1 < c.x0 - 2 * c.s || p.x0 > c.x1 + 2 * c.s) continue;
           const d = Math.min(...c.ys.map((b) => Math.abs(y - b)));
           if (d < 1.7 * c.s && (!best || d < best.d)) best = { c, d };
+        }
+        if (best && p.rule) {
+          best.c.x0 = Math.min(best.c.x0, p.x0);
+          best.c.x1 = Math.max(best.c.x1, p.x1);
         }
         if (best) best.c.items.push(p);
         else leftovers.push(p);
@@ -457,7 +621,7 @@
       }
     }
     lines.sort((a, b) => a.page - b.page || a.order - b.order);
-    for (const l of lines) buildParts(l);
+    for (const l of lines) if (!l.table) buildParts(l);
     return lines.filter((l) => l.text);
   }
 
@@ -467,7 +631,8 @@
     for (const p of items) {
       const t = p.str.replace(/\s+/g, '');
       const script = p.s < 0.85 * s && Math.abs(p.y - B) > 0.08 * s;
-      if (!t) p.kind = 'space';
+      if (p.rule) p.kind = 'math';
+      else if (!t) p.kind = 'space';
       else if (CJK.test(p.str)) p.kind = 'text';
       else if (p.mathFont || p.isExt || script) p.kind = 'math';
       else if (p.italic && /^[A-Za-z]$/.test(t)) p.kind = 'math';
@@ -476,6 +641,34 @@
       else p.kind = 'text';
     }
     const solid = items.filter((p) => p.kind !== 'space');
+    // 行首单独的列表符号（包括用 MathJax 画出的 ∗）是列表标记，不是公式
+    if (solid[0] && BULLET_CHAR.test(solid[0].str.trim()) && solid[1] && solid[1].x0 - solid[0].x1 > 0.2 * s) solid[0].kind = 'text';
+
+    // 代码行：大部分字符来自等宽字体（注释里的中文可能是其他字体）
+    const chars = (arr) => arr.reduce((a, p) => a + p.str.replace(/\s+/g, '').length, 0);
+    // 注释开始之后的内容（常换成中文字体）不参与判断
+    const sorted = [...solid].sort((a, b) => a.x0 - b.x0);
+    const ci = sorted.findIndex((p) => MONO_FONT.test(p.font) && /\/\/|\/\*/.test(p.str));
+    const judged = ci >= 0 ? sorted.slice(0, ci + 1) : sorted;
+    const monoItems = judged.filter((p) => MONO_FONT.test(p.font));
+    const total = chars(judged);
+    if (total && MONO_FONT.test(solid[0].font) && chars(monoItems) / total >= 0.7 && !solid.some((p) => p.geo || p.rule)) {
+      const cw = monoItems.reduce((a, p) => a + (p.x1 - p.x0), 0) / Math.max(1, monoItems.reduce((a, p) => a + p.str.length, 0)) || 0.6 * s;
+      let txt = '';
+      let prevItem = null;
+      for (const p of [...solid].sort((a, b) => a.x0 - b.x0)) {
+        if (prevItem) {
+          const gap = p.x0 - prevItem.x1;
+          if (gap > 0.3 * cw) txt += ' '.repeat(Math.max(1, Math.round(gap / cw)));
+        }
+        txt += p.str;
+        prevItem = p;
+      }
+      line.mono = true;
+      line.charW = cw;
+      line.codeText = txt.replace(/\s+$/, '');
+    }
+
     // 与公式相邻的数字、括号、运算符、函数名并入公式
     for (let changed = true; changed;) {
       changed = false;
@@ -500,21 +693,43 @@
       if (p.kind === 'math') {
         if (last && last.t === 'math' && gap < 1.2 * s) last.items.push(p);
         else {
-          if (last && last.t === 'text' && gap > 0.12 * s && !/\s$/.test(last.s)) last.s += ' ';
+          if (last && last.t === 'text' && gap > 0.12 * s && !/\s$/.test(last.s)) {
+            if (last.code) parts.push({ t: 'text', s: ' ' });
+            else last.s += ' ';
+          }
           parts.push({ t: 'math', items: [p] });
         }
+      } else if (MONO_FONT.test(p.font) && !line.mono) {
+        // 正文中的等宽字体片段（文件名、函数名等）：行内代码；前后的空格单独成段，不放进反引号里
+        const str = p.str.replace(/\s+/g, ' ');
+        if (last && last.t === 'text' && last.code && gap < 0.4 * s) {
+          last.s += (gap > 0.15 * s ? ' ' : '') + str;
+        } else {
+          if (last && last.t === 'text' && !last.code && gap > 0.12 * s && !/\s$/.test(last.s)) last.s += ' ';
+          else if (last && (last.t === 'math' || last.code) && gap > 0.12 * s) parts.push({ t: 'text', s: ' ' });
+          parts.push({ t: 'text', s: str, code: true });
+        }
       } else {
+        // 两端对齐时，中文字之间可能被逐字插入空格（只在大部分字之间都有空格时去掉）
         let str = p.str.replace(/\s+/g, ' ');
-        if (last && last.t === 'text') {
+        const spaced = (str.match(/(?:^|\S) (?=\S)/g) || []).length;
+        const cjkN = (str.match(new RegExp(CJK.source, 'g')) || []).length;
+        if (cjkN >= 4 && spaced >= 0.6 * (cjkN - 1)) str = str.replace(/(\S) (?=\S)/g, (m, a, i, all) => (CJK.test(a) && CJK.test(all[i + 2]) ? a : m));
+        const bold = BOLD_FONT.test(p.font) || !!p.emph;
+        if (last && last.t === 'text' && last.code) {
+          if (gap > 0.12 * s && !/^\s/.test(str)) str = ' ' + str;
+          parts.push({ t: 'text', s: str, bold });
+        } else if (last && last.t === 'text') {
           // 中文与西文之间有可见间距时保留空格（如“考虑 DP”、“1 平衡”）
           const a = last.s.slice(-1);
           const b = str[0];
           const mixed = a && b && !/\s/.test(a) && !/\s/.test(b) && CJK.test(a) !== CJK.test(b);
-          if (gap > 0.15 * s && (needsSpace(last.s, str) || mixed)) last.s += ' ';
-          last.s += str;
+          const sp = gap > 0.15 * s && (needsSpace(last.s, str) || mixed);
+          if (!last.bold === !bold) last.s += (sp ? ' ' : '') + str;
+          else parts.push({ t: 'text', s: (sp ? ' ' : '') + str, bold });
         } else {
           if (last && last.t === 'math' && gap > 0.12 * s && !/^\s/.test(str)) str = ' ' + str;
-          parts.push({ t: 'text', s: str });
+          parts.push({ t: 'text', s: str, bold });
         }
       }
       prev = p;
@@ -595,12 +810,13 @@
   function dropRunningHeaders(lines) {
     const pages = new Set(lines.map((l) => l.page));
     if (pages.size < 2) return lines;
+    // 代码行、只有符号的行（如单独的“{”）不会是页眉页脚
     const edge = (l) => {
-      if (!l.pageH) return false;
+      if (!l.pageH || l.mono || !/[\p{L}\p{N}]/u.test(l.text)) return false;
       const y = (l.top - l.pageTop) / l.pageH;
       return y < 0.12 || y > 0.88;
     };
-    const key = (l) => l.text.replace(/\d+/g, '#').replace(/\s+/g, '');
+    const key = (l) => ((l.top - l.pageTop) / l.pageH < 0.5 ? 'T' : 'B') + l.text.replace(/\d+/g, '#').replace(/\s+/g, '');
     const seen = new Map();
     for (const l of lines) {
       if (!edge(l)) continue;
@@ -615,7 +831,7 @@
     const out = [];
     for (const p of parts) {
       const last = out[out.length - 1];
-      if (last && last.t === 'text' && p.t === 'text') last.s += p.s;
+      if (last && last.t === 'text' && p.t === 'text' && !last.code === !p.code && (!last.bold === !p.bold || !p.s.trim())) last.s += p.s;
       else out.push({ ...p });
     }
     return out;
@@ -627,7 +843,7 @@
     const y = b[0];
     if (!x || !y) return a.concat(b);
     if (x.t === 'text' && y.t === 'text' && /[A-Za-z]-$/.test(x.s) && /^[a-z]/.test(y.s)) {
-      return mergeTextParts([...a.slice(0, -1), { t: 'text', s: x.s.slice(0, -1) + y.s }, ...b.slice(1)]);
+      return mergeTextParts([...a.slice(0, -1), { ...x, s: x.s.slice(0, -1) + y.s }, ...b.slice(1)]);
     }
     const lc = x.t === 'text' ? x.s.slice(-1) : '';
     const fc = y.t === 'text' ? y.s[0] : '';
@@ -646,7 +862,7 @@
       const a = lines[i - 1];
       const b = lines[i];
       if (a.page === b.page && !a.display && !b.display && Math.abs(a.h - bodyH) < bodyH * 0.15 && Math.abs(b.h - bodyH) < bodyH * 0.15) {
-        const g = b.top - a.top;
+        const g = a.B != null && b.B != null ? a.B - b.B : b.top - a.top;
         if (g > 0) gaps.push(g);
       }
     }
@@ -665,8 +881,16 @@
       return !((!prev || prev.page !== l.page) || (!next || next.page !== l.page));
     });
 
+    // 行间公式通常居中；表格单元格、行首的短公式等不居中的，按段落中的行内公式处理
+    const centered = (l) => {
+      const colW = maxRight - minLeft;
+      if (!(colW > 0)) return true;
+      return Math.abs((l.left - minLeft) - (maxRight - l.right)) < 0.2 * colW;
+    };
     const kindOf = (l) => {
-      if (l.display) return { type: 'display' };
+      if (l.table) return { type: 'table' };
+      if (l.mono) return { type: 'code' };
+      if (l.display && centered(l)) return { type: 'display' };
       const ratio = l.h / bodyH;
       if (ratio >= 1.15 && l.text.length <= 120 && !SENTENCE_END.test(l.text.replace(/[:：]$/, ''))) {
         return { type: 'h', level: ratio >= 1.7 ? 1 : ratio >= 1.28 ? 2 : 3 };
@@ -684,7 +908,7 @@
     };
     const stripParts = (parts, n) => {
       if (!n) return parts.map((p) => ({ ...p }));
-      return [{ t: 'text', s: parts[0].s.slice(n) }, ...parts.slice(1).map((p) => ({ ...p }))].filter((p) => p.t !== 'text' || p.s);
+      return [{ ...parts[0], s: parts[0].s.slice(n) }, ...parts.slice(1).map((p) => ({ ...p }))].filter((p) => p.t !== 'text' || p.s);
     };
 
     const blocks = [];
@@ -699,23 +923,37 @@
         else { cur = { type: 'display', rows: [l.parts[0].tex] }; blocks.push(cur); }
         continue;
       }
+      if (k.type === 'table') {
+        cur = { type: 'table', rows: l.rows };
+        blocks.push(cur);
+        continue;
+      }
+      // 代码块：连续的等宽字体行（允许中间有一个空行，或跨页继续）
+      if (k.type === 'code') {
+        if (cur && cur.type === 'code' && prev && (prev.page !== l.page || l.top - prev.top < lineGap * 2.6)) cur.lines.push(l);
+        else { cur = { type: 'code', lines: [l] }; blocks.push(cur); }
+        continue;
+      }
       // 简单模式：公式的上下限、分子分母分布在多行，连续的公式行合并成一块
       if (cur && cur.type === 'math' && k.type === 'math' && prev && prev.page === l.page && l.top - prev.top < lineGap * 3) {
         cur.parts = joinParts(cur.parts, l.parts);
         continue;
       }
-      let fresh = !cur || cur.type === 'display' || k.type === 'ul' || k.type === 'ol' || k.forceNew ||
+      let fresh = !cur || cur.type === 'display' || cur.type === 'code' || cur.type === 'table' || k.type === 'ul' || k.type === 'ol' || k.forceNew ||
         (k.type === 'math') !== (cur.type === 'math') || (k.type === 'h') !== (cur.type === 'h');
       if (!fresh && prev) {
         const curText = cur.parts.map((p) => (p.t === 'text' ? p.s : '$')).join('');
         if (prev.page !== l.page) {
           fresh = SENTENCE_END.test(curText); // 跨页：上一页最后一行不是句末才接续
         } else {
-          const g = l.top - prev.top;
+          // 行距按基线计算（含公式的行顶部更高，用行顶会高估行距）
+          const g = prev.B != null && l.B != null ? prev.B - l.B : l.top - prev.top;
           if (g < 0 || g > lineGap * 1.45) fresh = true;
           else if (Math.abs(l.h - prev.h) > bodyH * 0.2) fresh = true;
+          // 列表项之后，比列表标记更靠左的一行是新段落
+          else if ((cur.type === 'ul' || cur.type === 'ol') && l.left < cur.left0 - 0.3 * bodyH) fresh = true;
           // 句末且没有排满一行：段落结束（中文两端对齐，差一个字就说明是段尾）
-          else if (cur.type === 'p' && SENTENCE_END.test(prev.text) &&
+          else if ((cur.type === 'p' || cur.type === 'ul' || cur.type === 'ol') && SENTENCE_END.test(prev.text) &&
             prev.right < maxRight - bodyH * (CJK.test(prev.text.slice(-1)) ? 0.9 : 3)) fresh = true;
           else if (cur.type === 'p' && l.left - minLeft > bodyH * 1.2 && prev.left - minLeft < bodyH * 0.5) fresh = true;
           // 很短、且不以标点结尾的一行（如幻灯片里的“性质 1”“证明 2”）是独立的小标题
@@ -724,7 +962,7 @@
         }
       }
       if (fresh) {
-        cur = { type: k.type, level: k.level, n: k.n, parts: stripParts(l.parts, k.strip) };
+        cur = { type: k.type, level: k.level, n: k.n, parts: stripParts(l.parts, k.strip), left0: l.left };
         blocks.push(cur);
       } else {
         cur.parts = joinParts(cur.parts, l.parts);
@@ -736,6 +974,25 @@
   // ======================================================================
   //  输出
   // ======================================================================
+  // PDF 中没有代码语言的信息：只在特征明显时按内容推断，拿不准就留空
+  const CODE_LANGS = [
+    ['cpp', /^\s*#include\s*[<"]|\busing\s+namespace\s+std\b|\bstd::|\bcout\s*<<|\bcin\s*>>|\btemplate\s*</m],
+    ['java', /\bpublic\s+(static\s+)?(class|void)\b|\bSystem\.out\.print/],
+    ['python', /^\s*def\s+\w+\s*\(.*\)\s*:|^\s*(from\s+[\w.]+\s+)?import\s+\w+(\s+as\s+\w+)?\s*$|\bprint\s*\(.*\)\s*$|^\s*if\s+__name__\s*==/m],
+    ['rust', /\bfn\s+\w+\s*\(|\blet\s+mut\b|\bprintln!\s*\(/],
+    ['go', /^\s*package\s+\w+\s*$|\bfunc\s+\w+\s*\(|\bfmt\.Print/m],
+    ['javascript', /\bconsole\.log\s*\(|\bfunction\s+\w+\s*\(|=>\s*[{(]|\b(const|let)\s+\w+\s*=/],
+    ['bash', /^#!\/bin\/(ba)?sh|^\s*\$\s+\w+/m],
+  ];
+  function guessCodeLang(code) {
+    const cppOnly = /\busing\s+namespace\b|\bstd::|\bcout\b|\bcin\b|#include\s*<(bits\/|iostream|vector|algorithm|cstdio|cstring)|\btemplate\s*<|\bclass\s+\w+/;
+    if (/^\s*#include\s*</m.test(code) && !cppOnly.test(code)) return 'c';
+    for (const [lang, re] of CODE_LANGS) if (lang !== 'c' && re.test(code)) return lang;
+    return '';
+  }
+
+  CCM.guessCodeLang = guessCodeLang;
+
   function render(blocks, settings) {
     const d = CCM.delims ? CCM.delims(settings) : { inline: ['$', '$'], display: ['$$', '$$'] };
     const [io, ic] = d.inline;
@@ -745,42 +1002,113 @@
     const html = [];
     const text = [];
     let mathCount = 0;
-    let listType = null;
 
-    const partsMd = (parts) => parts.map((p) => (p.t === 'math' ? `${io}${p.tex}${ic}` : esc(p.s))).join('');
+    const codeMd = (s) => {
+      const t = s.trim();
+      const run = Math.max(0, ...(t.match(/`+/g) || []).map((m) => m.length));
+      const f = '`'.repeat(run + 1);
+      return run ? `${f} ${t} ${f}` : `${f}${t}${f}`;
+    };
+    // 粗体：首尾的空白和标点放在标记外面（**加粗**。），否则 Markdown 可能不认
+    const EDGE_PUNCT = /^([\s\u3000-\u303f\uff00-\uff0f\uff1a-\uff20.,;:!?()[\]"'“”‘’]*)([\s\S]*?)([\s\u3000-\u303f\uff00-\uff0f\uff1a-\uff20.,;:!?()[\]"'“”‘’]*)$/;
+    const boldWrap = (s, f, open, close) => {
+      const [, a, mid, z] = s.match(EDGE_PUNCT);
+      return mid ? f(a) + open + f(mid) + close + f(z) : f(s);
+    };
+    const textMd = (p) => (p.bold ? boldWrap(p.s, esc, '**', '**') : esc(p.s));
+    const textHtml = (p) => (p.bold ? boldWrap(p.s, escHtml, '<strong>', '</strong>') : escHtml(p.s));
+    const plain = (parts) => parts.map((p) => (p.bold ? { ...p, bold: false } : p));
+    const partsMd = (parts) => parts.map((p) => (p.t === 'math' ? `${io}${p.tex}${ic}` : p.code ? codeMd(p.s) : textMd(p))).join('');
     const partsHtml = (parts) => parts.map((p) => (p.t === 'math'
-      ? `<span class="math math-inline">${escHtml(io + p.tex + ic)}</span>` : escHtml(p.s))).join('');
+      ? `<span class="math math-inline">${escHtml(io + p.tex + ic)}</span>` : p.code ? `<code>${escHtml(p.s.trim())}</code>` : textHtml(p))).join('');
     const partsText = (parts) => parts.map((p) => (p.t === 'math' ? io + p.tex + ic : p.s)).join('');
 
+    let listStack = [];
+    // HTML 中已打开的列表（每层的最后一个 <li> 尚未闭合，嵌套列表放在其中）
+    const hStack = [];
+    const closeTo = (depth) => { while (hStack.length > depth) html.push(`</li></${hStack.pop()}>`); };
+    let topType = null;
     for (const b of blocks) {
       const isList = b.type === 'ul' || b.type === 'ol';
-      if (listType && listType !== b.type) { html.push(`</${listType}>`); listType = null; }
-      if (isList && !listType) { html.push(b.type === 'ol' && b.n !== 1 ? `<ol start="${b.n}">` : `<${b.type}>`); listType = b.type; }
       if (b.parts) mathCount += b.parts.filter((p) => p.t === 'math').length;
 
+      // 列表嵌套层级：按列表标记的水平位置
+      let indent = '';
       const prevList = md.length ? md[md.length - 1].list : null;
-      const sep = isList && prevList === b.type ? '\n' : '\n\n';
+      let sep = '\n\n';
+      if (isList) {
+        const x = b.left0 || 0;
+        while (listStack.length && x < listStack[listStack.length - 1] - 2) listStack.pop();
+        if (!listStack.length || x > listStack[listStack.length - 1] + 2) listStack.push(x);
+        const depth = listStack.length;
+        indent = '    '.repeat(depth - 1);
+        // 同一列表内（含嵌套）不空行；顶层换了列表类型才空一行
+        if (prevList && (depth > 1 || topType === b.type)) sep = '\n';
+        if (depth === 1) topType = b.type;
+        closeTo(depth);
+        if (hStack.length === depth && hStack[depth - 1] !== b.type) closeTo(depth - 1);
+        if (hStack.length === depth) html.push('</li>');
+        while (hStack.length < depth) {
+          html.push(b.type === 'ol' && b.n !== 1 ? `<ol start="${b.n}">` : `<${b.type}>`);
+          hStack.push(b.type);
+        }
+      } else {
+        listStack = [];
+        topType = null;
+        closeTo(0);
+      }
       let line;
-      if (b.type === 'display') {
+      if (b.type === 'table') {
+        const n = Math.max(...b.rows.map((r) => r.length));
+        const rows = b.rows.map((r) => Array.from({ length: n }, (_, i) => r[i] || []));
+        // 表头本身就会加粗显示：整行都是粗体时去掉粗体标记
+        const textParts = rows[0].flat().filter((p) => p.t === 'text' && p.s.trim());
+        if (textParts.length && textParts.every((p) => p.bold)) rows[0] = rows[0].map(plain);
+        mathCount += rows.reduce((a, r) => a + r.reduce((x, c) => x + c.filter((p) => p.t === 'math').length, 0), 0);
+        const cellMd = (c) => partsMd(c).replace(/\n/g, ' ').replace(/\|/g, '\\|').trim();
+        const mdRow = (r) => `| ${r.map(cellMd).join(' | ')} |`;
+        line = [mdRow(rows[0]), `| ${rows[0].map(() => '---').join(' | ')} |`, ...rows.slice(1).map(mdRow)].join('\n');
+        const htmlRow = (r, tag) => `<tr>${r.map((c) => `<${tag}>${partsHtml(c)}</${tag}>`).join('')}</tr>`;
+        html.push(`<table><thead>${htmlRow(rows[0], 'th')}</thead><tbody>${rows.slice(1).map((r) => htmlRow(r, 'td')).join('')}</tbody></table>`);
+        text.push(rows.map((r) => r.map((c) => partsText(c).replace(/\s+/g, ' ').trim()).join('\t')).join('\n'));
+      } else if (b.type === 'code') {
+        const base = Math.min(...b.lines.map((l) => l.left));
+        const cw = median(b.lines.map((l) => l.charW).filter(Boolean)) || 6;
+        const steps = [];
+        for (let i = 1; i < b.lines.length; i++) if (b.lines[i].page === b.lines[i - 1].page) steps.push(b.lines[i].top - b.lines[i - 1].top);
+        const step = median(steps.filter((x) => x > 0)) || 0;
+        const out = [];
+        b.lines.forEach((l, i) => {
+          const p = b.lines[i - 1];
+          if (p && step && p.page === l.page && l.top - p.top > step * 1.6) out.push('');
+          out.push(' '.repeat(Math.max(0, Math.round((l.left - base) / cw))) + l.codeText);
+        });
+        const body = out.join('\n');
+        const fence = /```/.test(body) ? '````' : '```';
+        const lang = guessCodeLang(body);
+        line = `${fence}${lang}\n${body}\n${fence}`;
+        html.push(`<pre><code${lang ? ` class="language-${lang}"` : ''}>${escHtml(body)}</code></pre>`);
+        text.push(body);
+      } else if (b.type === 'display') {
         mathCount++;
         const tex = displayTex(b.rows);
         line = `${dO}\n${tex}\n${dC}`;
         html.push(`<div class="math math-display">${escHtml(dO + tex + dC)}</div>`);
         text.push(dO + tex + dC);
       } else {
-        if (b.type === 'h') line = '#'.repeat(b.level) + ' ' + partsMd(b.parts);
-        else if (b.type === 'ul') line = '- ' + partsMd(b.parts);
-        else if (b.type === 'ol') line = `${b.n}. ` + partsMd(b.parts);
+        if (b.type === 'h') line = '#'.repeat(b.level) + ' ' + partsMd(plain(b.parts));
+        else if (b.type === 'ul') line = indent + '- ' + partsMd(b.parts);
+        else if (b.type === 'ol') line = indent + `${b.n}. ` + partsMd(b.parts);
         else line = partsMd(b.parts).replace(/^(#{1,6}\s|>|[-+*]\s)/, '\\$1');
 
-        if (b.type === 'h') html.push(`<h${b.level}>${partsHtml(b.parts)}</h${b.level}>`);
-        else if (isList) html.push(`<li>${partsHtml(b.parts)}</li>`);
+        if (b.type === 'h') html.push(`<h${b.level}>${partsHtml(plain(b.parts))}</h${b.level}>`);
+        else if (isList) html.push(`<li>${partsHtml(b.parts)}`);
         else html.push(`<p>${partsHtml(b.parts)}</p>`);
-        text.push((b.type === 'ul' ? '- ' : b.type === 'ol' ? `${b.n}. ` : '') + partsText(b.parts));
+        text.push(indent + (b.type === 'ul' ? '- ' : b.type === 'ol' ? `${b.n}. ` : '') + partsText(b.parts));
       }
       md.push({ s: (md.length ? sep : '') + line, list: isList ? b.type : null });
     }
-    if (listType) html.push(`</${listType}>`);
+    closeTo(0);
     return { markdown: md.map((x) => x.s).join(''), html: html.join('\n'), text: text.join('\n\n'), mathCount };
   }
 
@@ -892,7 +1220,30 @@
     if (fontsMissing) { try { await page.getOperatorList(); } catch (_) { /* ignore */ } }
     const [x0, y0, x1, y1] = page.view;
     if (!CCM.pdfPages[n]) CCM.pdfPages[n] = { page, styles: tc.styles, width: x1 - x0, height: y1 - y0, top: y1 };
-    return items.map((it, i) => toPiece(it, n, 0, it.str.length, orderBase + i));
+    // 矢量公式（MathJax 导出）：识别出的字形按阅读顺序插入文字项之间
+    let all = items;
+    if (CCM.pdfGlyphsFor) {
+      const { items: glyphs } = await CCM.pdfGlyphsFor(page);
+      if (glyphs.length) {
+        const texts = items.map((it) => ({ x: it.transform[4], y: it.transform[5], s: Math.hypot(it.transform[2], it.transform[3]) || 10, ref: it }));
+        const plan = CCM.mergeGlyphOrder(texts, glyphs.map((g) => ({ x: g.x, y: g.y, s: g.s, ref: g })));
+        all = [];
+        let k = 0;
+        const pending = new Map();
+        for (const { glyph, before } of plan) {
+          const key = before ? before.ref : null;
+          if (!pending.has(key)) pending.set(key, []);
+          pending.get(key).push(CCM.glyphItem(glyph.ref));
+        }
+        for (const it of items) {
+          if (pending.has(it)) all.push(...pending.get(it));
+          all.push(it);
+          k++;
+        }
+        if (pending.has(null)) all.push(...pending.get(null));
+      }
+    }
+    return all.map((it, i) => toPiece(it, n, 0, it.str.length, orderBase + i));
   }
 
   CCM.pdfSelectionAsync = async function pdfSelectionAsync(range, settings, onProgress) {
@@ -919,4 +1270,5 @@
 
   // 供测试使用
   CCM._pdfParseMath = parseMath;
+  CCM._pdfDebug = { richLines, apiPieces, buildBlocks };
 })();

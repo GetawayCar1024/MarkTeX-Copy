@@ -144,7 +144,9 @@
       const ann = katex.querySelector('annotation[encoding="application/x-tex"]');
       const m = katex.querySelector('math');
       if (ann) return make(ann.textContent, display, m);
-      return m ? fromMathML(m, display) : null;
+      if (m) return fromMathML(m, display);
+      // 只输出了 HTML（如洛谷）：按排版结构反推
+      return CCM.katexHtmlToLatex ? make(CCM.katexHtmlToLatex(katex), display, null) : null;
     }
 
     // Wikipedia
@@ -243,7 +245,11 @@
     let cs;
     try { cs = getComputedStyle(el); } catch (_) { return f; }
     const w = parseInt(cs.fontWeight, 10) || (cs.fontWeight === 'bold' ? 700 : 400);
-    f.css.bold = w >= 600;
+    // 着重号（text-emphasis，字下的小圆点）按加粗处理
+    const emph = cs.textEmphasisStyle || cs.webkitTextEmphasisStyle || 'none';
+    const dots = emph !== 'none' && emph !== '';
+    f.css.bold = w >= 600 || dots;
+    if (dots && cs.fontStyle === 'normal') f.italic = false; // 用 <em> 实现的着重号不是斜体
     f.css.italic = cs.fontStyle === 'italic' || cs.fontStyle.startsWith('oblique');
     f.css.strike = (cs.textDecorationLine || cs.textDecoration || '').includes('line-through');
     return f;
@@ -252,6 +258,14 @@
   function shell(live) {
     const lv = headingLevel(live);
     if (lv) return document.createElement('h' + lv);
+    // 用 <em> 实现的着重号（不倾斜、字下加点）：不当作斜体，之后按加粗处理
+    if (ITALIC_TAGS.has(live.localName)) {
+      try {
+        const cs = getComputedStyle(live);
+        const emph = cs.textEmphasisStyle || cs.webkitTextEmphasisStyle || 'none';
+        if (emph !== 'none' && cs.fontStyle === 'normal') return document.createElement('span');
+      } catch (_) { /* ignore */ }
+    }
     // 自定义元素（含连字符）不直接 cloneNode，避免触发页面的组件构造函数
     if (live.localName.includes('-')) {
       let block = false;

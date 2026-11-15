@@ -5,6 +5,7 @@ const CONTENT_FILES = [
   'src/settings.js',
   'src/i18n.js',
   'src/mathml2latex.js',
+  'src/katex2latex.js',
   'src/capture.js',
   'src/markdown.js',
   'src/html.js',

@@ -29,7 +29,7 @@ Chrome / Edge 扩展：把网页和 PDF 的选中内容复制为 **Markdown** �
 
 | 来源 | 典型网站 |
 | --- | --- |
-| KaTeX | ChatGPT、Claude、DeepSeek、Notion |
+| KaTeX | ChatGPT、Claude、DeepSeek、Notion、洛谷（仅 HTML 输出时按排版还原） |
 | MathJax v2 / v3 / v4 | Stack Exchange、GitHub、各类博客 |
 | MathML | arXiv、Wikipedia |
 | `data-tex` 等属性、图片 `alt` | 知乎、Gemini、掘金 |
@@ -41,15 +41,17 @@ Chrome / Edge 扩展：把网页和 PDF 的选中内容复制为 **Markdown** �
 浏览器自带的 PDF 阅读器不允许扩展读取选区，因此扩展内置了 [PDF.js](https://github.com/mozilla/pdf.js) 阅读器：
 
 - 默认仍用浏览器自带阅读器；在其中复制时会提示切换到 MarkTeX 阅读器，不会复制原文
-- 复制时重建段落、标题、列表，并把公式还原为 LaTeX（上下标、求和上下限、分式、根号、多行公式）。公式由排版推断，请核对
+- 复制时重建段落、标题、嵌套列表、粗体、代码块和有边框的表格，并把公式还原为 LaTeX（上下标、求和上下限、分式、根号、多行公式）。公式由排版推断，请核对
+- Typora 等用 MathJax 导出的 PDF（公式是矢量图形）也能识别出公式；大纲标题中的 TeX 会显示为公式
 - `Ctrl+A` 只选中 PDF 内容，并读取全部页面，无需先滚动到底
 
 ## 其他
 
 - 不用反斜杠转义方括号（`\[ \]` 在很多编辑器里表示公式）
-- 识别用 CSS 实现的粗体、斜体和标题；中文标点紧邻粗体时自动改用 `<strong>`
+- 识别用 CSS 实现的粗体、斜体和标题，着重号按粗体处理；中文标点紧邻粗体时自动改用 `<strong>`
+- 代码块未标注语言时，按内容推断常见语言（C/C++、Python、Java 等）
 - 浏览器内置页面和扩展商店中无法使用；扫描版 PDF 没有文字可复制
 
 ## License
 
-MIT。内置的 PDF.js 遵循 Apache License 2.0。
+MIT。内置的 PDF.js 遵循 Apache License 2.0；`src/mathjax-glyphs.js` 由 MathJax（Apache License 2.0）的字库生成。

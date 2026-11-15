@@ -37,6 +37,8 @@
       const [x0, y0, x1, y1] = page.view;
       CCM.pdfPages[pageNumber] = { page, styles: tc.styles, width: x1 - x0, height: y1 - y0, top: y1 };
       spans.forEach((s, i) => { s.__ccmItem = items[i]; s.__ccmPage = pageNumber; });
+      // 公式是矢量路径的 PDF（MathJax 导出）：把识别出的公式字形插入文本层，使其可以被选中和复制
+      if (CCM.pdfInjectGlyphs) await CCM.pdfInjectGlyphs(pageNumber, view);
     } catch (e) {
       console.warn('[marktex-copy] tag page failed', e);
     }
@@ -166,6 +168,16 @@
     app.initializedPromise.then(() => {
       buildToolbar();
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
+      // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式
+      app.eventBus.on('outlineloaded', () => {
+        if (!CCM.texLiteHtml) return;
+        for (const a of document.querySelectorAll('#outlinesView .treeItem > a')) {
+          const html = CCM.texLiteHtml(a.textContent);
+          if (!html) continue;
+          a.title = a.textContent;
+          a.innerHTML = html;
+        }
+      });
 
       if (embedded) {
         window.addEventListener('message', (e) => {

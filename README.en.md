@@ -29,7 +29,7 @@ To copy from local files (`file://`), also turn on **Allow access to file URLs**
 
 | Source | Typical sites |
 | --- | --- |
-| KaTeX | ChatGPT, Claude, DeepSeek, Notion |
+| KaTeX | ChatGPT, Claude, DeepSeek, Notion, Luogu (HTML-only output is rebuilt from layout) |
 | MathJax v2 / v3 / v4 | Stack Exchange, GitHub, blogs |
 | MathML | arXiv, Wikipedia |
 | `data-tex` attributes, image `alt` | Zhihu, Gemini |
@@ -41,15 +41,17 @@ Partial selections expand to whole formulas. In HTML, formulas can be LaTeX or M
 The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js](https://github.com/mozilla/pdf.js) reader is bundled:
 
 - PDFs still open in the browser's viewer; copying there prompts you to switch instead of copying plain text
-- Copying rebuilds paragraphs, headings and lists, and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
+- Copying rebuilds paragraphs, headings, nested lists, bold, code blocks and ruled tables, and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
+- PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes) are recognized too; TeX in outline titles is shown as math
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
 
 ## Notes
 
 - Brackets are not backslash-escaped (`\[ \]` means math in many editors)
-- CSS-styled bold, italics and headings are recognized
+- CSS-styled bold, italics and headings are recognized; emphasis dots count as bold
+- Code blocks without a language get one guessed from common patterns (C/C++, Python, Java, …)
 - Doesn't work on browser pages or web stores; scanned PDFs have no text to copy
 
 ## License
 
-MIT. The bundled PDF.js is licensed under Apache License 2.0.
+MIT. The bundled PDF.js is licensed under Apache License 2.0; `src/mathjax-glyphs.js` is generated from MathJax fonts (Apache License 2.0).

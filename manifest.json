@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extName__",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "__MSG_extDescription__",
   "permissions": [
     "contextMenus",
@@ -47,6 +47,7 @@
         "src/settings.js",
         "src/i18n.js",
         "src/mathml2latex.js",
+        "src/katex2latex.js",
         "src/capture.js",
         "src/markdown.js",
         "src/html.js",

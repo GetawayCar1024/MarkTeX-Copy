@@ -387,6 +387,7 @@
 
   // 供 PDF 公式重建复用
   CCM.charTex = charTex;
+  CCM.texSymbols = SYM;
   CCM.texJoin = join;
   CCM.texGroup = grp;
   CCM.texFuncs = FUNCS;
