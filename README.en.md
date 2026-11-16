@@ -41,8 +41,10 @@ Partial selections expand to whole formulas. In HTML, formulas can be LaTeX or M
 The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js](https://github.com/mozilla/pdf.js) reader is bundled:
 
 - PDFs still open in the browser's viewer; copying there prompts you to switch instead of copying plain text
+- The reader is laid out like Chrome's built-in viewer and follows the system light / dark theme
 - Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
-- PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes) are recognized too; TeX in outline titles is shown as math
+- PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes; exported on Windows or macOS) are recognized too; TeX in outline titles is shown as math
+- Line numbers beside code blocks aren't copied; tables split across pages are merged; running headers / footers and content hidden at page breaks are dropped
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
 
 ## Notes
@@ -54,4 +56,4 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 
 ## License
 
-MIT. The bundled PDF.js is licensed under Apache License 2.0; `src/mathjax-glyphs.js` is generated from MathJax fonts (Apache License 2.0).
+MIT. The bundled PDF.js is licensed under Apache License 2.0; `src/mathjax-glyphs.js` and the x in the icon come from MathJax fonts (Apache License 2.0).

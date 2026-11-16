@@ -66,6 +66,8 @@
       'pdf.needFileAccess': '请在扩展详情中开启「允许访问文件网址」',
       'pdf.openSettings': '打开设置',
       'pdf.openNative': '用自带阅读器打开',
+      'pdf.fitPage': '适合页面',
+      'pdf.fitWidth': '适合页宽',
       'notify.title': 'MarkTeX Copy',
     },
     en: {
@@ -131,6 +133,8 @@
       'pdf.needFileAccess': 'Enable “Allow access to file URLs” in the extension details',
       'pdf.openSettings': 'Open settings',
       'pdf.openNative': 'Open in built-in viewer',
+      'pdf.fitPage': 'Fit to page',
+      'pdf.fitWidth': 'Fit to width',
       'notify.title': 'MarkTeX Copy',
     },
   };

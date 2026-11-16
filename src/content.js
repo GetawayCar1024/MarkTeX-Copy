@@ -90,13 +90,17 @@
     const frame = document.createElement('iframe');
     frame.src = chrome.runtime.getURL(VIEWER) + '?embed=1' + (hash ? '#' + hash : '');
     frame.allow = 'clipboard-read; clipboard-write; fullscreen';
-    frame.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;border:0;margin:0;z-index:2147483646;background:#e8e8ed;';
+    // 底色与阅读器背景一致，避免加载时闪烁
+    const bg = matchMedia('(prefers-color-scheme: dark)').matches ? '#282828' : '#e8eaed';
+    frame.style.cssText = `position:fixed;inset:0;width:100vw;height:100vh;border:0;margin:0;z-index:2147483646;background:${bg};`;
     const onMessage = (e) => {
       if (e.source !== frame.contentWindow || !e.data) return;
       if (e.data.type === 'marktex-ready') {
         frame.contentWindow.postMessage({ type: 'marktex-pdf', data: buf, url: pdfUrl }, '*', [buf]);
       } else if (e.data.type === 'marktex-loaded') {
         readerState = 'open';
+        if (e.data.title) document.title = e.data.title;
+      } else if (e.data.type === 'marktex-title') {
         if (e.data.title) document.title = e.data.title;
       } else if (e.data.type === 'marktex-failed' || e.data.type === 'marktex-native') {
         // 阅读器解析失败：记住选择，重新加载为浏览器自带阅读器

@@ -34,10 +34,12 @@
     try {
       const tc = await page.getTextContent(TEXT_PARAMS);
       // 只有非空文本项才会生成 span；空项只产生换行 <br>。
-      // span 的 role 属性可能被无障碍模块改掉，所以按“非 markedContent 包装、非查找高亮”的 span 计数
+      // span 的 role 属性可能被无障碍模块改掉，所以按“非 markedContent 包装、非查找高亮”的 span 计数；
+      // 同一文本层可能再次触发 textlayerrendered，此时其中已有插入的公式字形 / 图片占位元素，也不计入
       const items = tc.items.filter((it) => it.str !== undefined && it.str !== '');
       const spans = Array.from(div.querySelectorAll('span')).filter((s) =>
         !s.classList.contains('markedContent') && !s.classList.contains('highlight') &&
+        !s.classList.contains('marktex-glyph') && !s.classList.contains('marktex-image') &&
         (s.parentElement === div || s.parentElement.classList.contains('markedContent')));
       if (spans.length !== items.length) {
         console.warn('[marktex-copy] text layer mismatch', pageNumber, spans.length, items.length);
@@ -108,6 +110,94 @@
     else if (currentUrl) location.href = currentUrl.split('#')[0] + '#marktex-native';
   }
 
+  // ---------- 工具栏：仿 Chrome 自带阅读器的布局 ----------
+  //   左：侧栏开关、文档标题
+  //   中：页码 | 缩小、缩放比例、放大 | 适合页面 / 页宽、旋转
+  //   右：搜索、MarkTeX 菜单 | 批注工具 | 下载、打印、更多
+  const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
+  const separator = () => make('div', { className: 'verticalToolbarSeparator marktex-separator' });
+
+  function layoutToolbar(app) {
+    const left = document.getElementById('toolbarViewerLeft');
+    const middle = document.getElementById('toolbarViewerMiddle');
+    const toggle = document.getElementById('viewsManagerToggleButton');
+    const numPages = document.getElementById('numPages');
+    if (!left || !middle || !toggle || !numPages || document.getElementById('marktexTitle')) return;
+
+    // 文档标题（标签页标题里还有文件名等，这里只显示文档自己的标题或文件名）
+    const title = make('span', { id: 'marktexTitle' });
+    toggle.after(title);
+    const setTitle = () => {
+      let docTitle = '';
+      try { docTitle = app._docTitle || ''; } catch (_) { /* 元数据尚未读取 */ }
+      const name = app._docFilename || '';
+      title.textContent = docTitle || name || app._title || '';
+      title.title = docTitle && name && docTitle !== name ? `${docTitle}\n${name}` : title.textContent;
+      // 嵌入在 PDF 原页面中时，由原页面设置标签页标题
+      if (embedded && app._title) window.parent.postMessage({ type: 'marktex-title', title: app._title }, '*');
+    };
+    app.eventBus.on('documentloaded', setTitle);
+    app.eventBus.on('metadataloaded', setTitle);
+
+    // 页码移到中间
+    middle.prepend(numPages.parentElement, separator());
+    // 缩放比例放在缩小、放大按钮之间
+    const zoomIn = document.getElementById('zoomInButton');
+    const scale = document.getElementById('scaleSelectContainer');
+    if (zoomIn && scale) scale.after(zoomIn);
+
+    // 适合页面 / 适合页宽（按当前状态切换），逆时针旋转
+    const fit = make('button', { id: 'marktexFitButton', className: 'toolbarButton', type: 'button' });
+    const rotate = make('button', { id: 'marktexRotateButton', className: 'toolbarButton', type: 'button' });
+    rotate.setAttribute('data-l10n-id', 'pdfjs-page-rotate-ccw-button');
+    const syncFit = () => {
+      const toWidth = app.pdfViewer && app.pdfViewer.currentScaleValue === 'page-fit';
+      fit.dataset.fit = toWidth ? 'width' : 'page';
+      fit.title = fit.ariaLabel = CCM.t(toWidth ? 'pdf.fitWidth' : 'pdf.fitPage');
+    };
+    fit.addEventListener('click', () => {
+      app.pdfViewer.currentScaleValue = fit.dataset.fit === 'width' ? 'page-width' : 'page-fit';
+    });
+    rotate.addEventListener('click', () => app.rotatePages(-90));
+    app.eventBus.on('scalechanging', syncFit);
+    withLanguage(syncFit);
+    middle.append(separator(), fit, rotate);
+
+    // 右侧：下载在打印之前（与 Chrome 一致）
+    const download = document.getElementById('downloadButton');
+    const print = document.getElementById('printButton');
+    if (download && print) print.before(download);
+  }
+
+  // ---------- 侧栏：左侧一列视图切换按钮（缩略图 / 大纲 / 附件 / 图层），代替 PDF.js 的下拉菜单 ----------
+  function buildSidebarTabs() {
+    const vm = document.getElementById('viewsManager');
+    if (!vm || document.getElementById('marktexTabs')) return;
+    const strip = make('div', { id: 'marktexTabs' });
+    strip.setAttribute('role', 'tablist');
+    const views = [['thumbnailsViewMenu', 'grid'], ['outlinesViewMenu', 'outline'], ['attachmentsViewMenu', 'attach'], ['layersViewMenu', 'layers']];
+    for (const [id, icon] of views) {
+      const source = document.getElementById(id);
+      if (!source) continue;
+      const tab = make('button', { type: 'button', className: 'marktex-tab' });
+      tab.dataset.icon = icon;
+      tab.setAttribute('role', 'tab');
+      tab.addEventListener('click', () => source.click());
+      // 与 PDF.js 菜单项的状态同步：没有大纲 / 附件 / 图层时隐藏，选中的视图高亮
+      const sync = () => {
+        tab.hidden = source.disabled && id !== 'thumbnailsViewMenu';
+        const selected = source.classList.contains('selected');
+        tab.classList.toggle('selected', selected);
+        tab.setAttribute('aria-selected', String(selected));
+        tab.title = tab.ariaLabel = source.textContent.trim();
+      };
+      new MutationObserver(sync).observe(source, { attributes: true, childList: true, subtree: true, characterData: true });
+      sync();
+      strip.appendChild(tab);
+    }
+    vm.prepend(strip);
+  }
+
   // ---------- 工具栏上的 MarkTeX 菜单 ----------
   function buildToolbar() {
     const right = document.getElementById('toolbarViewerRight');
@@ -120,7 +210,7 @@
     btn.className = 'marktex-button';
     btn.setAttribute('aria-haspopup', 'menu');
     btn.setAttribute('aria-expanded', 'false');
-    btn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 17V7h2.4l2.6 3.4L10.6 7H13v10h-2.4v-6.2L8 14l-2.6-3.2V17zm13.5 0-3.5-4h2.3V7h2.4v6H20z"/></svg><span>MarkTeX</span>';
+    btn.innerHTML = '<span class="marktex-logo" aria-hidden="true"></span><span class="marktex-label">MarkTeX</span><span class="marktex-caret" aria-hidden="true"></span>';
     const menu = document.createElement('div');
     menu.className = 'marktex-menu';
     menu.setAttribute('role', 'menu');
@@ -163,6 +253,7 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
     wrap.append(btn, menu);
     right.insertBefore(wrap, right.firstChild);
+    wrap.after(separator());
 
     // 搜索按钮（连同查找栏）移到右侧、MarkTeX 按钮之前
     const find = document.getElementById('viewFindButton');
@@ -170,6 +261,14 @@
     if (findWrap) {
       findWrap.classList.add('marktex-find');
       right.insertBefore(findWrap, wrap);
+    }
+    // 查找栏：第一行是输入框和结果数，第二行是各个选项
+    const opt1 = document.getElementById('findbarOptionsOneContainer');
+    const opt2 = document.getElementById('findbarOptionsTwoContainer');
+    if (opt1 && opt2) {
+      const box = make('div', { id: 'marktexFindOptions' });
+      opt1.before(box);
+      box.append(opt1, opt2);
     }
   }
 
@@ -183,11 +282,10 @@
     opts.set('disablePreferences', true);  // 避免阅读器偏好设置覆盖上面的选项
 
     app.initializedPromise.then(() => {
+      layoutToolbar(app);
       buildToolbar();
+      buildSidebarTabs();
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
-      // 侧栏视图切换按钮的图标随当前视图变化（见 pdf-viewer.css 中的 data-view）
-      const setView = (view) => { const vm = document.getElementById('viewsManager'); if (vm && view) vm.dataset.view = String(view); };
-      app.eventBus.on('sidebarviewchanged', ({ view }) => setView(view));
       // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式
       app.eventBus.on('outlineloaded', () => {
         if (!CCM.texLiteHtml) return;
@@ -208,7 +306,8 @@
           app.open({ data: new Uint8Array(data), filename: /\.pdf$/i.test(name) ? name : name + '.pdf' })
             .then(() => {
               try { app.setTitleUsingUrl(url, url); } catch (_) { /* ignore */ }
-              window.parent.postMessage({ type: 'marktex-loaded', title: document.title }, '*');
+              // 嵌入模式下 PDF.js 不改 document.title，标题由原页面设置
+              window.parent.postMessage({ type: 'marktex-loaded', title: app._title || '' }, '*');
             })
             .catch((err) => fail(err, url));
         });

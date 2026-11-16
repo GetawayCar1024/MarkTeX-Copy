@@ -2,33 +2,141 @@
 // 这类 PDF 的公式没有任何文字，只有一条条路径；但每个字形的路径就是 MathJax 字库里的原始轮廓，
 // 因此可以按轮廓签名（见 tools/build-mathjax-glyphs.cjs）查表认出字符。
 // 分数线、根号横线是单独的矩形，也一并记录下来，供公式还原使用。
+//   * Windows（Chrome 打印）：字形路径是字库坐标，外加一个缩放变换
+//   * macOS（Quartz 打印）：字形路径已换算为页面坐标，缩放由坐标间的整数比例求出
 (() => {
   const CCM = (globalThis.__CCM = globalThis.__CCM || {});
   if (CCM.pdfGlyphsFor) return;
 
   // ---------- 签名：必须与 tools/build-mathjax-glyphs.cjs 保持一致 ----------
-  function signature(data) {
+  // 路径终点：[[类型, x, y]]，类型 0 = M，1 = P，2 = Z；map 把路径坐标换算到所需坐标系，same 判断两个坐标是否相同
+  function endpoints(data, map, same) {
     const out = [];
-    const r = Math.round;
     let x = NaN;
     let y = NaN;
     let sx = NaN;
     let sy = NaN;
-    const seg = (nx, ny) => {
-      if (r(nx) !== r(x) || r(ny) !== r(y)) out.push(`P${r(nx)},${r(ny)}`);
-      x = nx;
-      y = ny;
+    const seg = (p) => {
+      if (!same(p[0], x) || !same(p[1], y)) out.push([1, p[0], p[1]]);
+      [x, y] = p;
     };
     for (let i = 0; i < data.length;) {
       const op = data[i++];
-      if (op === 0) { x = data[i]; y = data[i + 1]; sx = x; sy = y; out.push(`M${r(x)},${r(y)}`); i += 2; }
-      else if (op === 1) { seg(data[i], data[i + 1]); i += 2; }
-      else if (op === 2) { seg(data[i + 4], data[i + 5]); i += 6; }
-      else if (op === 3) { seg(data[i + 2], data[i + 3]); i += 4; }
-      else if (op === 4) { if (out[out.length - 1] !== 'Z') { seg(sx, sy); out.push('Z'); } x = sx; y = sy; }
+      if (op === 0) { [x, y] = map(data[i], data[i + 1]); sx = x; sy = y; out.push([0, x, y]); i += 2; }
+      else if (op === 1) { seg(map(data[i], data[i + 1])); i += 2; }
+      else if (op === 2) { seg(map(data[i + 4], data[i + 5])); i += 6; }
+      else if (op === 3) { seg(map(data[i + 2], data[i + 3])); i += 4; }
+      else if (op === 4) { if (out.length && out[out.length - 1][0] !== 2) { seg([sx, sy]); out.push([2]); } x = sx; y = sy; }
       else return null;
     }
-    return out.join(' ');
+    return out;
+  }
+
+  // 相对于第一个点的签名；fx、fy 把坐标差换算为字库单位
+  function signature(pts, fx, fy) {
+    const [, x0, y0] = pts[0];
+    let s = '';
+    for (const p of pts) {
+      if (s) s += ' ';
+      s += p[0] === 2 ? 'Z' : (p[0] ? 'P' : 'M') + Math.round((p[1] - x0) * fx) + ',' + Math.round((p[2] - y0) * fy);
+    }
+    return s;
+  }
+
+  // 表中的候选：[码位, 变体, 字宽, 起点 x, 起点 y] 每 5 项一组
+  const candidates = (list) => {
+    const out = [];
+    for (let i = 0; i + 4 < list.length; i += 5) out.push({ cp: list[i], variant: list[i + 1], w: list[i + 2], x0: list[i + 3], y0: list[i + 4] });
+    return out;
+  };
+
+  // 页面坐标中的字形：坐标差都是缩放 k 的整数倍（字库坐标都是整数）。
+  // 取一个不太小的坐标差作为起点，假设它是 a 个字库单位；再由小到大逐个检验其余坐标差，
+  // 同时用最小二乘修正 k。返回由大到小的几个可行缩放
+  const NOISE = 1.5e-4; // PDF 中坐标差的误差（坐标约保留 4 位小数）
+  function scalesOf(vals) {
+    const out = [];
+    if (!vals.length) return out;
+    vals.sort((a, b) => a - b);
+    const seed = vals.find((v) => v >= 0.12) || vals[vals.length - 1];
+    for (let a = 1; a <= 64 && out.length < 3; a++) {
+      let k = seed / a;
+      if (k < 0.0015) break; // 对应字号 1.5pt
+      let sxn = seed * a;
+      let snn = a * a;
+      let ok = true;
+      for (const v of vals) {
+        const q = v / k;
+        const n = Math.round(q);
+        const err = (q * NOISE) / (k * Math.sqrt(snn));
+        if (err > 0.3 || Math.abs(q - n) > 0.1 + err) { ok = false; break; }
+        sxn += v * n;
+        snn += n * n;
+        k = sxn / snn;
+      }
+      if (ok) out.push(k);
+    }
+    return out;
+  }
+
+  function pageGlyph(data, ctm, box, table) {
+    const bw = box.x1 - box.x0;
+    const bh = box.y1 - box.y0;
+    if (!(bw > 0.1 || bh > 0.1) || bw > 160 || bh > 160) return null;
+    const pts = endpoints(data, (x, y) => [ctm[0] * x + ctm[4], ctm[3] * y + ctm[5]], (a, b) => Math.abs(a - b) < 6e-4);
+    if (!pts || pts.length < 4 || pts.length > 3000) return null;
+    const [, X0, Y0] = pts[0];
+    const vx = [];
+    const vy = [];
+    const add = (arr, d) => { d = Math.abs(d); if (d >= 6e-4) arr.push(d); };
+    let px = X0;
+    let py = Y0;
+    for (const p of pts) {
+      if (p[0] === 2) continue;
+      add(vx, p[1] - X0); add(vx, p[1] - px);
+      add(vy, p[2] - Y0); add(vy, p[2] - py);
+      px = p[1];
+      py = p[2];
+    }
+    const lookup = (kx, ky) => {
+      const list = table[fnv(signature(pts, 1 / kx, 1 / ky))];
+      return list ? { X0, Y0, kx, ky, cands: candidates(list).map((c) => ({ ...c, ox: X0 - kx * c.x0, oy: Y0 - ky * c.y0 })) } : null;
+    };
+    // 普通字形：横竖等比缩放，两个方向的坐标差一起求缩放
+    for (const k of scalesOf(vx.concat(vy))) {
+      const hit = lookup(k, k);
+      if (hit) return hit;
+    }
+    // 可伸缩定界符的延伸部件：只在一个方向上拉伸
+    const xs = scalesOf(vx);
+    const ys = xs.length ? scalesOf(vy) : [];
+    for (const kx of xs) {
+      for (const ky of ys) {
+        if (Math.abs(kx / ky - 1) < 0.004) continue;
+        const hit = lookup(kx, ky);
+        if (hit) return hit;
+      }
+    }
+    return null;
+  }
+
+  // 形状相同、位置不同的字形（如句点“.”与居中点“⋅”、“…”与“⋯”）：取基线与附近字形一致的那个
+  function resolvePositions(raw, known) {
+    const refs = known.concat(raw.filter((r) => r.cands.length === 1).map((r) => ({ x: r.cands[0].ox, y: r.cands[0].oy, s: 1000 * r.kx })));
+    for (const r of raw) {
+      if (r.cands.length < 2) continue;
+      const s = 1000 * r.kx;
+      let best = null;
+      for (const c of r.cands) {
+        let d = Infinity;
+        for (const g of refs) {
+          if (Math.abs(g.s - s) > 0.35 * s || Math.abs(g.x - r.X0) > 5 * s) continue;
+          d = Math.min(d, Math.abs(g.y - c.oy));
+        }
+        if (d < 0.15 * s && (!best || d < best.d)) best = { c, d };
+      }
+      if (best) r.cands = [best.c, ...r.cands.filter((c) => c !== best.c)];
+    }
   }
 
   function fnv(s) {
@@ -45,6 +153,17 @@
     m[0] * n[2] + m[2] * n[3], m[1] * n[2] + m[3] * n[3],
     m[0] * n[4] + m[2] * n[5] + m[4], m[1] * n[4] + m[3] * n[5] + m[5],
   ];
+  // 矩形 [x0, y0, x1, y1] 经变换 m 后的外框
+  const boxOf = (m, r) => {
+    const xs = [];
+    const ys = [];
+    for (const [x, y] of [[r[0], r[1]], [r[2], r[1]], [r[0], r[3]], [r[2], r[3]]]) {
+      xs.push(m[0] * x + m[2] * y + m[4]);
+      ys.push(m[1] * x + m[3] * y + m[5]);
+    }
+    return { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
+  };
+  const intersect = (c, b) => (c ? { x0: Math.max(c.x0, b.x0), x1: Math.min(c.x1, b.x1), y0: Math.max(c.y0, b.y0), y1: Math.min(c.y1, b.y1) } : b);
 
   // 字体变体中的 ASCII 字母 → LaTeX 写法
   const VARIANT_CMD = {
@@ -100,38 +219,66 @@
     if (!table || !OPS) return { items: [] };
     const ops = await page.getOperatorList();
     const glyphs = [];
+    const placed = []; // 页面坐标中认出的字形，位置待定（见 resolvePositions）
     const rects = [];
+    const pageRects = [];
     const strokes = [];
     const dots = [];
     const images = [];
     let ctm = [1, 0, 0, 1, 0, 0];
+    // 当前的裁剪范围（页面坐标的外框，null 表示不裁剪）。macOS 打印的 PDF 中，跨页的一行会在上下两页各画一次，
+    // 各被页面内容区的裁剪挡住一部分。文字和公式字形是否看得见按整行判断（见 CCM.pdfClipped），这里只排除看不见的表格线、图片等
+    let clip = null;
+    let pendingClip = false;
     const stack = [];
+    const textClips = [];
+    let unclippedText = false;
+    const TEXT_OPS = new Set([OPS.showText, OPS.showSpacedText, OPS.nextLineShowText, OPS.nextLineSetSpacingShowText]);
+    // 边框线常常压在裁剪范围的边上，留 1pt 余量
+    const visible = (b) => !clip || Math.min(b.y1, clip.y1 + 1) - Math.max(b.y0, clip.y0 - 1) >= 0.4 * (b.y1 - b.y0);
     for (let i = 0; i < ops.fnArray.length; i++) {
       const fn = ops.fnArray[i];
       const a = ops.argsArray[i];
-      if (fn === OPS.save) stack.push(ctm);
-      else if (fn === OPS.restore) ctm = stack.pop() || ctm;
+      if (fn === OPS.save) stack.push([ctm, clip]);
+      else if (fn === OPS.restore) [ctm, clip] = stack.pop() || [ctm, clip];
       else if (fn === OPS.transform) ctm = mul(ctm, a);
-      else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageXObjectRepeat) {
+      else if (fn === OPS.paintFormXObjectBegin) {
+        stack.push([ctm, clip]);
+        if (a && a[0]) ctm = mul(ctm, a[0]);
+        if (a && a[1]) clip = intersect(clip, boxOf(ctm, a[1]));
+      } else if (fn === OPS.paintFormXObjectEnd) [ctm, clip] = stack.pop() || [ctm, clip];
+      else if (fn === OPS.clip || fn === OPS.eoClip) pendingClip = true;
+      else if (TEXT_OPS.has(fn)) {
+        if (!clip) unclippedText = true;
+        else if (!textClips.some((r) => Math.abs(r.y0 - clip.y0) < 0.5 && Math.abs(r.y1 - clip.y1) < 0.5)) textClips.push(clip);
+      } else if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject || fn === OPS.paintImageXObjectRepeat) {
         // 图片：单位正方形经当前变换后的外框
-        const xs = [ctm[4], ctm[4] + ctm[0], ctm[4] + ctm[2], ctm[4] + ctm[0] + ctm[2]];
-        const ys = [ctm[5], ctm[5] + ctm[1], ctm[5] + ctm[3], ctm[5] + ctm[1] + ctm[3]];
-        images.push({ x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) });
+        const box = boxOf(ctm, [0, 0, 1, 1]);
+        if (visible(box)) images.push(box);
       } else if (fn === OPS.constructPath) {
         const data = a && a[1] && a[1][0];
         const mm = a && a[2];
         if (!data || !mm) continue;
+        const box = boxOf(ctm, mm);
+        if (pendingClip) {
+          pendingClip = false;
+          clip = intersect(clip, box);
+          if (a[0] === OPS.endPath) continue;
+        }
         const scale = Math.hypot(ctm[0], ctm[1]);
         if (!(scale > 0) || Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6) continue; // 只看未旋转的路径
         const isRect = data.length === 13 && data[0] === 0 && data[3] === 1 && data[6] === 1 && data[9] === 1 && data[12] === 4;
+        const filled = a[0] === OPS.fill || a[0] === OPS.eoFill;
         if (scale > 0.05) {
-          // 页面单位下的细线（填充的细矩形或描边的直线段）：可能是表格边框
-          const filled = a[0] === OPS.fill || a[0] === OPS.eoFill;
+          // macOS 打印的公式字形：路径已是页面坐标
+          if (filled && !isRect) {
+            const g = pageGlyph(data, ctm, box, table);
+            if (g) { placed.push(g); continue; }
+          }
+          // 页面单位下的细线（填充的细矩形或描边的直线段）：可能是表格边框，也可能是 macOS 打印的分数线
           const line = a[0] === OPS.stroke && data.length === 6 && data[0] === 0 && data[3] === 1;
-          const xs = [ctm[0] * mm[0] + ctm[4], ctm[0] * mm[2] + ctm[4]];
-          const ys = [ctm[3] * mm[1] + ctm[5], ctm[3] * mm[3] + ctm[5]];
-          const box = { x0: Math.min(...xs), x1: Math.max(...xs), y0: Math.min(...ys), y1: Math.max(...ys) };
-          if ((isRect && filled) || line) strokes.push(box);
+          if (((isRect && filled) || line) && visible(box)) strokes.push(box);
+          if (isRect && filled) pageRects.push(box);
           // 画出来的列表符号（Chrome 打印的 PDF）：实心圆 •、空心圆 ◦、小方块 ▪
           const w = box.x1 - box.x0;
           const h = box.y1 - box.y0;
@@ -144,16 +291,41 @@
           rects.push({ x: ctm[4] + mm[0] * scale, x1: ctm[4] + mm[2] * scale, y0: ctm[5] + mm[1] * ctm[3], y1: ctm[5] + mm[3] * ctm[3], s: scale * 1000 });
           continue;
         }
-        const sig = signature(data);
-        const hit = sig && table[fnv(sig)];
-        if (!hit) continue;
-        const info = glyphInfo(hit);
+        // Windows 打印的公式字形：字库坐标 + 缩放变换，起点位置也必须与字库一致
+        const pts = endpoints(data, (x, y) => [Math.round(x), Math.round(y)], (p, q) => p === q);
+        const list = pts && pts.length && table[fnv(signature(pts, 1, 1))];
+        if (!list) continue;
+        const cs = candidates(list);
+        const c = cs.find((e) => e.x0 === pts[0][1] && e.y0 === pts[0][2]) || cs[0];
+        const info = glyphInfo([c.cp, c.variant, c.w]);
         if (!info) continue;
-        const s = scale * 1000;
-        glyphs.push({ ...info, x: ctm[4], x1: ctm[4] + (info.w || mm[2]) * scale, y: ctm[5], s });
+        glyphs.push({ ...info, x: ctm[4], x1: ctm[4] + (info.w || mm[2]) * scale, y: ctm[5], s: scale * 1000 });
       }
     }
+    // 所有文字都画在裁剪范围内时，记下这些范围：范围之外（上下页边距中）的文字是看不见的
+    CCM.pdfTextClips = CCM.pdfTextClips || {};
+    if (page.pageNumber) CCM.pdfTextClips[page.pageNumber] = !unclippedText && textClips.length ? textClips : null;
+    resolvePositions(placed, glyphs);
+    for (const g of placed) {
+      const c = g.cands[0];
+      const info = glyphInfo([c.cp, c.variant, c.w]);
+      if (info) glyphs.push({ ...info, x: c.ox, x1: c.ox + c.w * g.kx, y: c.oy, s: 1000 * g.kx });
+    }
     const tables = findTables(strokes);
+    // macOS 打印的分数线、根号横线：页面单位的细矩形，紧贴在公式字形的上方或下方，两端与这些字形（及根号）对齐。
+    // 标题下的分隔线、表格线虽然附近也可能有公式，但会比公式长得多
+    for (const r of placed.length ? pageRects : []) {
+      const y = (r.y0 + r.y1) / 2;
+      if (r.y1 - r.y0 > 3 || tables.some((t) => r.x0 < t.x1 && r.x1 > t.x0 && t.rows.some((ty) => Math.abs(ty - y) < 1.5))) continue;
+      const near = glyphs.filter((g) => g.x1 > r.x0 - 0.3 * g.s && g.x < r.x1 + 0.3 * g.s &&
+        g.y - y < 1.5 * g.s && y - g.y < 1.6 * g.s && (g.y > y || y - (g.y + 0.75 * g.s) < 0.6 * g.s));
+      if (!near.length) continue;
+      const s = Math.max(...near.map((g) => g.s));
+      const gx0 = Math.min(...near.map((g) => g.x));
+      const gx1 = Math.max(...near.map((g) => g.x1));
+      if (r.x0 < gx0 - 0.6 * s || r.x1 > gx1 + 0.6 * s) continue;
+      rects.push({ x: r.x0, x1: r.x1, y0: r.y0, y1: r.y1, s });
+    }
     CCM.pdfTables = CCM.pdfTables || {};
     if (page.pageNumber) CCM.pdfTables[page.pageNumber] = tables;
     // 图片（截图、插图）：去掉很小的（图标、装饰）、铺满整页的（扫描件的底图）和重复的
@@ -212,6 +384,7 @@
       if (g.cmd) g.tex = `\\${g.cmd}{${g.str}}`;
       else if (g.upright) {
         if (funcs.has(g.str)) g.tex = '\\' + g.str;
+        else if (g.str === 'mod') g.tex = '\\bmod';
         else g.tex = g.str.length > 1 ? `\\text{${g.str}}` : `\\mathrm{${g.str}}`;
       }
     }
@@ -276,6 +449,14 @@
     return tables;
   }
 
+  // 基线为 y 的一行（正文字号 s）是否被裁剪掉：行的中线不在裁剪范围内（只看上下方向，代码块等横向溢出的内容仍算可见）。
+  // 跨页的一行在上下两页各露出一部分，按中线判断恰好只保留其中一处；同一行的文字和公式字形结论相同
+  CCM.pdfClipped = (pageNumber, y, s) => {
+    const clips = CCM.pdfTextClips && CCM.pdfTextClips[pageNumber];
+    const c = y + 0.3 * s;
+    return !!clips && !clips.some((r) => c >= r.y0 && c <= r.y1);
+  };
+
   const cache = new WeakMap();
   CCM.pdfGlyphsFor = (page) => {
     if (!cache.has(page)) cache.set(page, recognize(page).catch((e) => { console.warn('[marktex-copy] glyph recognition failed', e); return { items: [] }; }));
@@ -338,6 +519,12 @@
     const div = view && view.textLayer && view.textLayer.div;
     if (!page || !div) return 0;
     const { items: glyphs } = await CCM.pdfGlyphsFor(page);
+    // 被裁剪掉、看不见的文字和公式不参与选中（按正文字号判断，与 pdf-text.js 一致）
+    const textSpans = Array.from(div.querySelectorAll('span')).filter((s) => s.__ccmItem && !s.__ccmItem.__glyph);
+    const sizes = textSpans.map((s) => Math.hypot(s.__ccmItem.transform[2], s.__ccmItem.transform[3])).sort((a, b) => a - b);
+    const body = sizes[Math.floor(sizes.length / 2)] || 10;
+    const clipped = (g) => !g.image && !g.bullet && CCM.pdfClipped(pageNumber, g.rule ? g.y - 0.25 * body : g.y, body);
+    for (const span of textSpans) if (CCM.pdfClipped(pageNumber, span.__ccmItem.transform[5], body)) span.classList.add('marktex-clipped');
     // 图片也放一个透明的占位元素（宽高与图片相同），使图片可以被选中、显示选中底色，并决定复制时是否包含该图片
     const pics = ((CCM.pdfImages || {})[pageNumber] || []).map((im) => ({
       str: '\u2003', image: im, variant: 'image', x: im.x0, x1: im.x1, y: im.y0, s: im.y1 - im.y0,
@@ -360,6 +547,7 @@
       const item = CCM.glyphItem(g);
       span.textContent = item.str;
       span.className = g.image ? 'marktex-image' : 'marktex-glyph';
+      if (clipped(g)) span.classList.add('marktex-clipped');
       span.setAttribute('role', 'presentation');
       const top = g.image ? g.image.y1 : g.rule ? g.y + 0.05 * g.s : g.y + 0.78 * g.s;
       span.style.left = `${((100 * (g.x - px0)) / W).toFixed(3)}%`;
@@ -382,4 +570,7 @@
     div.__ccmGlyphs = items.length;
     return items.length;
   };
+
+  // 供测试使用
+  CCM._glyphDebug = { endpoints, signature, scalesOf, pageGlyph, fnv };
 })();

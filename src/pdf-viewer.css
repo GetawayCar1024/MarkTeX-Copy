@@ -1,242 +1,74 @@
-/* MarkTeX Copy —— PDF.js 阅读器主题：跟随系统浅色 / 深色，只覆盖 viewer.css 的配色变量与少量样式 */
+/* MarkTeX Copy —— PDF.js 阅读器主题。
+   风格参照 Chrome 自带的 PDF 阅读器：扁平、统一不用圆角；深色配色与 Chrome 一致，浅色是对应的浅色版本，跟随系统切换。
+   布局见 src/pdf-bridge.js：工具栏左侧是侧栏开关和标题，中间是页码与缩放，右侧是搜索、MarkTeX 菜单和其他操作；
+   侧栏左侧是一列视图切换按钮。 */
 :root {
-  /* 统一的两级阴影：sm 用于页面、缩略图等内容表面；lg 用于菜单、查找栏、提示等浮层 */
-  --mt-shadow-sm: 0 1px 2px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.3)),
-    0 2px 8px light-dark(rgba(0, 0, 0, 0.06), rgba(0, 0, 0, 0.25));
-  --mt-shadow-lg: 0 1px 3px light-dark(rgba(0, 0, 0, 0.08), rgba(0, 0, 0, 0.3)),
-    0 8px 24px light-dark(rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0.45));
+  --mt-font: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  --mt-bar: light-dark(#ffffff, #3c3c3c);
+  --mt-bar-line: light-dark(#dadce0, rgba(0, 0, 0, 0.35));
+  --mt-side: light-dark(#f8f9fa, #28292a);
+  --mt-canvas: light-dark(#e8eaed, #282828);
+  --mt-fg: light-dark(#3c4043, #e3e3e3);
+  --mt-fg-strong: light-dark(#202124, #ffffff);
+  --mt-fg-2: light-dark(#5f6368, #ababab);
+  --mt-line: light-dark(#dadce0, #5e5e5e);
+  --mt-sep: light-dark(#dadce0, rgba(255, 255, 255, 0.3));
+  --mt-hover: light-dark(rgba(60, 64, 67, 0.08), rgba(255, 255, 255, 0.08));
+  --mt-press: light-dark(rgba(60, 64, 67, 0.16), rgba(255, 255, 255, 0.16));
+  --mt-on: light-dark(rgba(60, 64, 67, 0.12), rgba(255, 255, 255, 0.24));
+  --mt-field: light-dark(#f1f3f4, rgba(0, 0, 0, 0.5));
+  --mt-accent: light-dark(#1a73e8, #8ab4f8);
+  --mt-accent-soft: light-dark(rgba(26, 115, 232, 0.1), rgba(138, 180, 248, 0.16));
+  --mt-on-accent: light-dark(#ffffff, #202124);
+  --mt-menu: light-dark(#ffffff, #2d2e30);
+  --mt-menu-line: light-dark(#dadce0, rgba(255, 255, 255, 0.08));
+  --mt-shadow: 0 1px 2px light-dark(rgba(60, 64, 67, 0.3), rgba(0, 0, 0, 0.4)),
+    0 2px 6px 2px light-dark(rgba(60, 64, 67, 0.15), rgba(0, 0, 0, 0.25));
+  --mt-page-shadow: 0 0 0 1px light-dark(rgba(60, 64, 67, 0.08), rgba(0, 0, 0, 0.2)),
+    0 1px 3px light-dark(rgba(60, 64, 67, 0.25), rgba(0, 0, 0, 0.5));
 
-  --marktex-accent: light-dark(#007aff, #0a84ff);
-  --marktex-font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
-
-  --main-color: light-dark(#1c1c1e, #f5f5f7);
-  --body-bg-color: light-dark(#e8e8ed, #2c2c2e);
-  --progressBar-color: var(--marktex-accent);
-  --progressBar-bg-color: light-dark(rgba(118, 118, 128, 0.16), rgba(118, 118, 128, 0.3));
-  --progressBar-blend-color: light-dark(#7ab8ff, #2f6fc4);
-  --scrollbar-color: light-dark(rgba(60, 60, 67, 0.35), rgba(235, 235, 245, 0.3));
-  --scrollbar-bg-color: transparent;
-
-  --toolbar-bg-color: light-dark(rgba(249, 249, 251, 0.9), rgba(36, 36, 38, 0.9));
-  --toolbar-border-color: light-dark(rgba(60, 60, 67, 0.16), rgba(84, 84, 88, 0.5));
-  --toolbar-box-shadow: 0 0.5px 0 var(--toolbar-border-color);
-  --sidebar-toolbar-bg-color: light-dark(#f2f2f7, #242426);
-  --sidebar-narrow-bg-color: light-dark(rgba(242, 242, 247, 0.96), rgba(36, 36, 38, 0.96));
-  --toolbarSidebar-box-shadow: 0 0.5px 0 var(--toolbar-border-color);
-
-  --button-hover-color: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  --toggled-btn-color: var(--marktex-accent);
-  --toggled-btn-bg-color: light-dark(rgba(0, 122, 255, 0.14), rgba(10, 132, 255, 0.28));
-  --toggled-hover-active-btn-color: light-dark(rgba(0, 122, 255, 0.2), rgba(10, 132, 255, 0.36));
-  --separator-color: light-dark(rgba(60, 60, 67, 0.18), rgba(84, 84, 88, 0.6));
-
-  --field-color: var(--main-color);
-  --field-bg-color: light-dark(rgba(118, 118, 128, 0.12), rgba(118, 118, 128, 0.24));
+  /* PDF.js 的配色变量 */
+  --toolbar-height: 44px;
+  --icon-size: 20px;
+  --main-color: var(--mt-fg);
+  --body-bg-color: var(--mt-canvas);
+  --toolbar-bg-color: var(--mt-bar);
+  --toolbar-border-color: var(--mt-bar-line);
+  --toolbar-box-shadow: 0 1px 0 var(--mt-bar-line);
+  --toolbar-icon-opacity: 1;
+  --toolbar-icon-bg-color: var(--mt-fg);
+  --toolbar-icon-hover-bg-color: var(--mt-fg-strong);
+  --doorhanger-icon-opacity: 1;
+  --button-hover-color: var(--mt-hover);
+  --toggled-btn-color: var(--mt-fg-strong);
+  --toggled-btn-bg-color: var(--mt-on);
+  --toggled-hover-active-btn-color: var(--mt-press);
+  --separator-color: var(--mt-sep);
+  --field-color: var(--mt-fg-strong);
+  --field-bg-color: var(--mt-field);
   --field-border-color: transparent;
-  --dropdown-btn-bg-color: light-dark(rgba(118, 118, 128, 0.12), rgba(118, 118, 128, 0.24));
-
-  --doorhanger-bg-color: light-dark(#ffffff, #2c2c2e);
-  --doorhanger-border-color: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.08));
-  --doorhanger-hover-color: var(--main-color);
-  --doorhanger-separator-color: light-dark(rgba(60, 60, 67, 0.18), rgba(84, 84, 88, 0.6));
+  --dropdown-btn-bg-color: var(--mt-field);
+  --doorhanger-bg-color: var(--mt-menu);
+  --doorhanger-border-color: var(--mt-menu-line);
+  --doorhanger-hover-color: var(--mt-fg-strong);
+  --doorhanger-separator-color: var(--mt-menu-line);
+  --progressBar-color: var(--mt-accent);
+  --progressBar-bg-color: transparent;
+  --progressBar-blend-color: var(--mt-accent-soft);
+  --scrollbar-color: light-dark(#bdc1c6, #6f6f6f);
+  --scrollbar-bg-color: transparent;
+  --page-margin: 10px auto;
+  --page-border: 0 solid transparent;
 }
 
 body,
 input,
 button,
 select {
-  font-family: var(--marktex-font);
+  font-family: var(--mt-font);
 }
 
-/* 工具栏：悬浮的圆角卡片（与侧边栏、菜单风格一致），毛玻璃背景 */
-#toolbarContainer,
-#toolbarSidebar,
-#findbar,
-#secondaryToolbar {
-  -webkit-backdrop-filter: saturate(180%) blur(20px);
-  backdrop-filter: saturate(180%) blur(20px);
-}
-
-/* 侧边栏（缩略图 / 文档大纲）：紧贴工具栏下方和窗口左侧，与工具栏同一套配色 */
-/* #viewsManager 以工具栏为定位参照：top: 100% 即紧贴工具栏底部，高度等于页面区域高度 */
-#outerContainer.viewsManagerOpen #viewsManager {
-  inset-inline-start: 0 !important;
-}
-
-#viewsManager {
-  inset-block-start: 100% !important;
-  height: var(--viewer-container-height) !important;
-  margin: 0 !important;
-  border: 0 !important;
-  border-inline-end: 0.5px solid var(--toolbar-border-color) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-
-
-#viewsManager {
-  --sidebar-bg-color: light-dark(rgba(255, 255, 255, 0.9), rgba(36, 36, 38, 0.9));
-  --sidebar-backdrop-filter: saturate(180%) blur(20px);
-  --header-bg: light-dark(rgba(255, 255, 255, 0.9), rgba(36, 36, 38, 0.9));
-  --views-text-color: light-dark(#1c1c1e, #f5f5f7);
-  --button-bg: light-dark(rgba(118, 118, 128, 0.12), rgba(118, 118, 128, 0.24));
-  --button-hover-bg: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1));
-  --button-active-bg: light-dark(rgba(0, 122, 255, 0.14), rgba(10, 132, 255, 0.28));
-  --button-focus-outline-color: var(--marktex-accent);
-  --indicator-color: var(--marktex-accent);
-  --status-undo-bg: light-dark(rgba(0, 122, 255, 0.08), rgba(10, 132, 255, 0.16));
-  --image-border-color: light-dark(#d1d1d6, #3a3a3c);
-  --image-hover-border-color: light-dark(#aeaeb2, #636366);
-  --image-current-border-color: var(--marktex-accent);
-  --image-page-number-bg: light-dark(#f2f2f7, #3a3a3c);
-  --image-current-page-number-fg: #ffffff;
-  --button-border-radius: 5px;
-  --sidebar-border-radius: 0px;
-}
-
-#viewsManager .viewsManagerButton,
-#viewsManagerSelectorOptions,
-#viewsManagerSelectorOptions * {
-  border-radius: 5px !important;
-}
-
-/* 页面缩略图：图片与外框同一圆角；选中（蓝）/ 悬停（灰）描边改细 */
-#viewsManager {
-  --image-border-width: 2px;
-  /* 缩略图：细边框 + 描边环，都叠加统一的 sm 阴影 */
-  --image-shadow: 0 0 0 0.5px var(--image-border-color), var(--mt-shadow-sm);
-  --image-hover-shadow: 0 0 0 var(--image-border-width) var(--image-hover-border-color), var(--mt-shadow-sm);
-  --image-current-shadow: 0 0 0 var(--image-border-width) var(--image-current-border-color), var(--mt-shadow-sm);
-}
-
-#thumbnailsView .thumbnailImageContainer,
-#thumbnailsView .thumbnailImageContainer img {
-  border-radius: 4px !important;
-}
-
-/* 文档大纲的条目 */
-#viewsManager,
-#outlinesView,
-#attachmentsView,
-#layersView {
-  --treeitem-color: light-dark(rgba(28, 28, 30, 0.85), rgba(245, 245, 247, 0.85)) !important;
-  --treeitem-hover-color: light-dark(#1c1c1e, #ffffff) !important;
-  --treeitem-bg-color: light-dark(rgba(0, 0, 0, 0.06), rgba(255, 255, 255, 0.1)) !important;
-  --treeitem-selected-color: var(--marktex-accent) !important;
-  --treeitem-selected-bg-color: light-dark(rgba(0, 122, 255, 0.12), rgba(10, 132, 255, 0.24)) !important;
-}
-
-#outlinesView,
-#attachmentsView,
-#layersView {
-  box-sizing: border-box;
-  width: 100% !important;
-  padding: 6px 8px !important;
-  overflow-x: hidden !important;
-}
-
-#viewsManagerContent {
-  overflow-x: hidden !important;
-}
-
-/* 大纲条目：悬停 / 选中的样式与工具栏按钮、缩略图一致（同样的灰色悬停底、蓝色选中底、5px 圆角） */
-#viewsManager .treeItem > a,
-#viewsManager .treeItem > a:hover {
-  box-sizing: border-box;
-  min-width: 100% !important;
-  padding: 5px 8px !important;
-  border-radius: 5px !important;
-  box-shadow: none !important;
-  font-size: 13px;
-  line-height: 1.35;
-  transition: background-color 0.12s;
-}
-
-#viewsManager .treeItem > a:hover {
-  background-color: var(--button-hover-color) !important;
-}
-
-#viewsManager .treeItem.selected > a {
-  background-color: var(--treeitem-selected-bg-color) !important;
-  color: var(--treeitem-selected-color) !important;
-}
-
-.treeItemToggler {
-  margin-inline-start: 2px;
-}
-
-.toolbarButton,
-.dropdownToolbarButton,
-.toolbarField,
-#pageNumber,
-#scaleSelect {
-  border-radius: 7px !important;
-}
-
-.toolbarField {
-  border: none !important;
-  box-shadow: none !important;
-}
-
-.toolbarField:focus,
-#pageNumber:focus {
-  outline: 2px solid var(--marktex-accent);
-  outline-offset: -1px;
-}
-
-/* 下拉菜单、查找栏、更多工具：圆角卡片 */
-.doorHanger,
-.doorHangerRight,
-#findbar,
-#secondaryToolbar,
-.editorParamsToolbar {
-  border-radius: 12px !important;
-  border: 0.5px solid var(--doorhanger-border-color) !important;
-  box-shadow: var(--mt-shadow-lg) !important;
-}
-
-.doorHanger::before,
-.doorHanger::after,
-.doorHangerRight::before,
-.doorHangerRight::after {
-  display: none !important;
-}
-
-/* 页面：去掉旧式边框贴图，改为柔和阴影 */
-.pdfViewer .page {
-  border: none !important;
-  border-image: none !important;
-  margin: 12px auto !important;
-  border-radius: 3px;
-  overflow: hidden;
-  box-shadow: var(--mt-shadow-sm);
-}
-
-.pdfViewer.singlePageView .page {
-  margin: 0 auto !important;
-}
-
-.pdfViewer.removePageBorders .page {
-  box-shadow: none;
-}
-
-/* 侧边栏缩略图 */
-.thumbnail.selected > .thumbnailImage,
-.thumbnail:hover > .thumbnailImage {
-  outline: 2px solid var(--marktex-accent);
-  outline-offset: 2px;
-}
-
-/* 选中文字的高亮色 */
-.textLayer ::selection {
-  background: light-dark(rgba(0, 122, 255, 0.28), rgba(10, 132, 255, 0.42));
-}
-
-#viewerContainer {
-  scrollbar-width: thin;
-}
-
-/* 工具栏、侧边栏标题和 MarkTeX 菜单都是界面元素，全选时不应被选中 */
+/* 界面元素（工具栏、侧栏、菜单）在全选时不应被选中 */
 #toolbarContainer,
 #toolbarContainer *,
 #viewsManager,
@@ -254,112 +86,902 @@ select {
   color: inherit;
 }
 
-/* ---------- 工具栏上的 MarkTeX 菜单 ---------- */
+#toolbarContainer input::selection {
+  background: var(--mt-accent-soft);
+}
+
+/* ====================================================================
+   工具栏
+   ==================================================================== */
+#toolbarContainer {
+  height: var(--toolbar-height);
+  padding: 0 8px;
+  background-color: var(--mt-bar);
+  box-shadow: 0 1px 0 var(--mt-bar-line);
+  border: 0;
+}
+
+/* 三栏：两侧等宽，中间一组始终居中；右侧放不下时左侧先让出空间 */
+#toolbarContainer #toolbarViewer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
+  align-items: center;
+  column-gap: 12px;
+}
+
+#toolbarContainer #toolbarViewer #toolbarViewerLeft {
+  justify-self: start;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0;
+}
+
+#toolbarViewerMiddle {
+  justify-self: center;
+}
+
+#toolbarViewerRight {
+  justify-self: end;
+}
+
+#toolbarViewer .toolbarHorizontalGroup {
+  gap: 2px;
+}
+
+#toolbarContainer #toolbarViewer .toolbarButtonSpacer {
+  display: none;
+}
+
+/* Chrome 阅读器没有翻页按钮：用页码、滚动或键盘翻页 */
+#toolbarViewerLeft > .toolbarHorizontalGroup:has(> #previous) {
+  display: none !important;
+}
+
+#marktexTitle {
+  min-width: 0;
+  margin-inline-start: 10px;
+  overflow: hidden;
+  color: var(--mt-fg-strong);
+  font: 500 13px/1 var(--mt-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  cursor: default;
+}
+
+/* 按钮：方形，悬停为浅色底 */
+.toolbarButton,
+.toolbarButtonWithContainer {
+  height: 32px;
+  width: 32px;
+  aspect-ratio: auto;
+}
+
+.toolbarButton {
+  border-radius: 0;
+  transition: background-color 0.1s;
+
+  &::before {
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+    -webkit-mask-position: center;
+    mask-position: center;
+  }
+
+  &:active:not(.labeled) {
+    background-color: var(--mt-press);
+  }
+
+  &.toggled,
+  &[aria-expanded="true"] {
+    background-color: var(--mt-on);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mt-accent);
+    outline-offset: -2px;
+  }
+}
+
+.verticalToolbarSeparator {
+  height: 20px;
+  margin-inline: 6px;
+  border-left: 1px solid var(--mt-sep);
+}
+
+/* 侧栏按钮上“有大纲 / 附件”的提示点 */
+.pdfSidebarNotification::after {
+  top: 5px;
+  inset-inline-end: 5px;
+  width: 6px;
+  height: 6px;
+  border-radius: 0;
+  background-color: var(--mt-accent);
+}
+
+/* 打印按钮之后、“更多”之前的分隔线不需要 */
+#toolbarViewerRight > .verticalToolbarSeparator.hiddenMediumView,
+#toolbarViewer .splitToolbarButtonSeparator {
+  display: none !important;
+}
+
+/* 输入框：无边框的深色（浅色主题为浅灰）方块，与 Chrome 一致 */
+.toolbarField {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background-color: var(--mt-field);
+  color: var(--mt-fg-strong);
+  font: 13px/18px var(--mt-font);
+
+  &:focus {
+    outline: 2px solid var(--mt-accent);
+    outline-offset: -2px;
+  }
+}
+
+#pageNumber {
+  width: 4ch;
+  min-width: 36px;
+  height: 28px;
+  padding: 0 4px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+}
+
+#toolbarContainer #toolbarViewer #numPages.toolbarLabel {
+  min-width: 0;
+  margin: 0;
+  padding: 0 4px 0 8px;
+  color: var(--mt-fg-2);
+  font: 13px/1 var(--mt-font);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 缩放比例：与输入框同样的方块，右侧一个小箭头 */
+#scaleSelectContainer {
+  min-width: 0;
+  height: 28px;
+  margin-inline: 2px;
+  border: 0;
+  border-radius: 0;
+  background-color: var(--mt-field);
+
+  &:hover {
+    background-color: var(--mt-field);
+  }
+
+  > select {
+    min-width: 0;
+    width: auto;
+    height: 28px;
+    padding: 0 28px 0 10px;
+    border-radius: 0;
+    background-color: transparent;
+    color: var(--mt-fg-strong);
+    font: 13px var(--mt-font);
+    cursor: pointer;
+
+    &:is(:hover, :focus-visible) {
+      background-color: var(--mt-hover);
+      color: var(--mt-fg-strong);
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--mt-accent);
+      outline-offset: -2px;
+    }
+
+    > option {
+      background: var(--mt-menu);
+      color: var(--mt-fg-strong);
+    }
+  }
+
+  &::after {
+    inset-inline-end: 6px;
+    width: 16px;
+    height: 16px;
+    -webkit-mask-size: contain;
+    mask-size: contain;
+    background-color: var(--mt-fg-2);
+  }
+}
+
+/* 加载进度：工具栏底部的细条 */
+#toolbarContainer #loadingBar {
+  height: 3px;
+  border: 0;
+  background: transparent;
+}
+
+/* ---------- MarkTeX 菜单 ---------- */
 .marktex-menu-wrap {
   position: relative;
   display: flex;
   align-items: center;
-  margin-inline-end: 4px;
 }
 
 .marktex-button {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  height: 24px;
-  padding: 0 9px 0 6px;
+  gap: 6px;
+  height: 32px;
+  padding: 0 6px 0 8px;
   border: 0;
-  border-radius: 7px;
-  background: var(--toggled-btn-bg-color);
-  color: var(--marktex-accent);
-  font: 600 12px/1 var(--marktex-font);
+  border-radius: 0;
+  background: transparent;
+  color: var(--mt-accent);
+  font: 600 13px/1 var(--mt-font);
   cursor: pointer;
-  transition: background-color 0.15s;
-}
+  transition: background-color 0.1s;
 
-.marktex-button:hover,
-.marktex-button[aria-expanded="true"] {
-  background: var(--toggled-hover-active-btn-color);
-}
+  &:hover {
+    background-color: var(--mt-hover);
+  }
 
-.marktex-button svg {
-  width: 17px;
-  height: 17px;
-  fill: currentColor;
+  &:active {
+    background-color: var(--mt-press);
+  }
+
+  &[aria-expanded="true"] {
+    background-color: var(--mt-on);
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mt-accent);
+    outline-offset: -2px;
+  }
+
+  .marktex-logo,
+  .marktex-caret {
+    display: inline-block;
+    flex: none;
+    background-color: currentColor;
+    -webkit-mask: var(--marktex-logo-icon) center / contain no-repeat;
+    mask: var(--marktex-logo-icon) center / contain no-repeat;
+  }
+
+  .marktex-logo {
+    width: 20px;
+    height: 20px;
+  }
+
+  .marktex-caret {
+    width: 16px;
+    height: 16px;
+    -webkit-mask-image: var(--toolbarButton-menuArrow-icon);
+    mask-image: var(--toolbarButton-menuArrow-icon);
+  }
 }
 
 .marktex-menu {
   position: absolute;
-  top: calc(100% + 10px);
+  top: calc(100% + 6px);
   inset-inline-end: 0;
   z-index: 100000;
   min-width: 220px;
-  padding: 5px;
-  border: 0.5px solid var(--doorhanger-border-color);
-  border-radius: 12px;
-  background: var(--doorhanger-bg-color);
-  box-shadow: var(--mt-shadow-lg);
-}
+  padding: 6px 0;
+  border: 1px solid var(--mt-menu-line);
+  border-radius: 0;
+  background: var(--mt-menu);
+  box-shadow: var(--mt-shadow);
 
-.marktex-menu button {
-  display: block;
-  width: 100%;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--main-color);
-  font: 13px/1.3 var(--marktex-font);
-  text-align: start;
-  white-space: nowrap;
-  cursor: pointer;
-}
+  button {
+    display: block;
+    width: 100%;
+    height: 32px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: var(--mt-fg-strong);
+    font: 13px/32px var(--mt-font);
+    text-align: start;
+    white-space: nowrap;
+    cursor: pointer;
 
-.marktex-menu button:hover {
-  background: var(--marktex-accent);
-  color: #fff;
+    &:hover,
+    &:focus-visible {
+      background: var(--mt-hover);
+      outline: none;
+    }
+
+    &:active {
+      background: var(--mt-press);
+    }
+  }
 }
 
 .marktex-sep {
-  height: 0.5px;
-  margin: 4px 8px;
-  background: var(--doorhanger-separator-color);
+  height: 1px;
+  margin: 6px 0;
+  background: var(--mt-menu-line);
 }
 
-@media (max-width: 760px) {
-  .marktex-button span {
+/* ---------- 窄窗口：依次收起标题、MarkTeX 文字、批注工具 ---------- */
+@media (max-width: 1100px) {
+  #marktexTitle {
     display: none;
   }
+}
 
-  .marktex-button {
-    padding: 0 5px;
+@media (max-width: 960px) {
+  .marktex-button .marktex-label {
+    display: none;
   }
 }
 
-/* 加载失败提示 */
-.marktex-bar {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  z-index: 100000;
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  max-width: min(640px, calc(100vw - 32px));
-  padding: 10px 14px;
-  border-radius: 12px;
-  background: rgba(28, 28, 30, 0.92);
-  color: #fff;
-  box-shadow: var(--mt-shadow-lg);
-  font: 13px/1.45 var(--marktex-font);
-  transform: translateX(-50%);
+@media (max-width: 860px) {
+  #editorModeButtons,
+  #editorModeSeparator,
+  #toolbarViewerMiddle > .marktex-separator:last-of-type,
+  #marktexFitButton,
+  #marktexRotateButton {
+    display: none !important;
+  }
 }
 
-.marktex-bar a {
-  flex: none;
-  color: #0a84ff;
-  font-weight: 600;
-  text-decoration: none;
+@media (max-width: 560px) {
+  #toolbarViewerMiddle > .marktex-separator {
+    display: none;
+  }
+}
+
+/* ====================================================================
+   弹出层：查找栏、更多菜单、批注参数、对话框。统一为方角、单色底、细边框加阴影
+   ==================================================================== */
+.doorHanger,
+.doorHangerRight,
+#findbar,
+#secondaryToolbar,
+.editorParamsToolbar,
+.popupMenu,
+dialog {
+  border: 1px solid var(--mt-menu-line) !important;
+  border-radius: 0 !important;
+  background-color: var(--mt-menu) !important;
+  box-shadow: var(--mt-shadow) !important;
+}
+
+.doorHanger::before,
+.doorHanger::after,
+.doorHangerRight::before,
+.doorHangerRight::after {
+  display: none !important;
+}
+
+.doorHanger,
+.doorHangerRight {
+  inset-block-start: calc(100% + 6px);
+}
+
+.doorHangerRight {
+  inset-inline-end: 0;
+}
+
+.popupMenu {
+  --menuitem-border-radius: 0;
+  --menu-bg: var(--mt-menu);
+  --menu-text-color: var(--mt-fg-strong);
+  --menuitem-hover-bg: var(--mt-hover);
+  --menuitem-active-bg: var(--mt-press);
+  padding: 6px 0;
+}
+
+/* 更多菜单 */
+#secondaryToolbar {
+  width: 248px;
+  padding: 6px 0;
+
+  .menuContainer {
+    padding: 0;
+  }
+
+  .toolbarButton.labeled {
+    height: 32px;
+    min-height: 32px;
+    padding-inline: 14px 16px;
+    gap: 12px;
+    border-radius: 0;
+    color: var(--mt-fg-strong);
+    font: 400 13px var(--mt-font);
+
+    > span {
+      font-weight: 400;
+    }
+
+    &::before {
+      width: 18px;
+      height: 18px;
+      flex: none;
+      background-color: var(--mt-fg);
+    }
+
+    &:is(:hover, :focus-visible) {
+      background-color: var(--mt-hover);
+      color: var(--mt-fg-strong);
+    }
+
+    &.toggled {
+      background-color: var(--mt-accent-soft);
+      color: var(--mt-accent);
+
+      &::before {
+        background-color: var(--mt-accent);
+      }
+    }
+  }
+
+  .horizontalToolbarSeparator {
+    margin: 6px 0;
+    border-top-color: var(--mt-menu-line);
+  }
+}
+
+/* 批注工具的参数面板（颜色、粗细等） */
+.editorParamsToolbar {
+  color: var(--mt-fg-strong);
+
+  .editorParamsLabel {
+    color: var(--mt-fg-strong);
+  }
+}
+
+/* 查找栏：搜索按钮正下方、右对齐 */
+.marktex-find {
+  position: relative;
+}
+
+#findbar,
+#findbar.wrapContainers {
+  --findbar-padding: 4px;
+  top: calc(100% + 6px);
+  inset-inline-start: auto !important;
+  inset-inline-end: 0 !important;
+  width: 480px;
+  max-width: calc(100vw - 16px);
+  min-width: 0;
+  height: auto;
+  padding: 8px;
+  flex-flow: row wrap;
+  align-items: center;
+  gap: 6px 4px;
+
+  > * {
+    height: 32px;
+    padding: 0;
+  }
+
+  #findInputContainer {
+    order: 0;
+    margin: 0;
+    gap: 2px;
+  }
+
+  #findInputContainer #findInput {
+    width: 180px;
+    height: 32px;
+    padding: 0 8px;
+
+    &[data-status="notFound"] {
+      background-color: light-dark(#fce8e6, rgba(242, 139, 130, 0.24));
+    }
+  }
+
+  /* 选项单独一行（src/pdf-bridge.js 把两组选项放进 #marktexFindOptions） */
+  #marktexFindOptions {
+    order: 2;
+    display: flex;
+    flex: 0 0 100%;
+    flex-wrap: wrap;
+    gap: 2px;
+    height: auto;
+
+    > div {
+      height: auto;
+      padding: 0;
+      gap: 2px;
+    }
+  }
+
+  .toggleButton.toolbarLabel {
+    height: 28px;
+    margin: 0;
+    padding: 0 8px;
+    border-radius: 0;
+    color: var(--mt-fg);
+    font: 12px var(--mt-font);
+    cursor: pointer;
+
+    &:is(:hover, :has(> input:focus-visible)) {
+      background-color: var(--mt-hover);
+      color: var(--mt-fg-strong);
+    }
+
+    &:has(> input:checked) {
+      background-color: var(--mt-accent-soft);
+      color: var(--mt-accent);
+    }
+  }
+
+  #findbarMessageContainer,
+  &.wrapContainers #findbarMessageContainer {
+    order: 1;
+    flex: 1 1 auto;
+    flex-flow: row nowrap;
+    align-items: center;
+    justify-content: flex-end;
+    height: 32px;
+    padding-inline: 4px;
+
+    #findResultsCount,
+    #findMsg {
+      height: auto;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      background: none;
+      color: var(--mt-fg-2);
+      font: 12px var(--mt-font);
+      white-space: nowrap;
+    }
+  }
+}
+
+dialog {
+  color: var(--mt-fg-strong);
+
+  .toolbarField {
+    height: 30px;
+    padding: 0 8px;
+  }
+
+  button {
+    min-height: 30px;
+    padding: 0 16px;
+    border: 1px solid var(--mt-line);
+    border-radius: 0;
+    background: transparent;
+    color: var(--mt-fg-strong);
+    font: 13px var(--mt-font);
+    cursor: pointer;
+
+    &:hover {
+      background: var(--mt-hover);
+    }
+  }
+}
+
+dialog::backdrop {
+  background-color: rgba(0, 0, 0, 0.32);
+}
+
+/* ====================================================================
+   侧栏：紧贴工具栏下方和窗口左侧；左侧一列视图按钮，右侧是缩略图 / 大纲等
+   ==================================================================== */
+#viewsManager {
+  --sidebar-width: 280px;
+  --sidebar-min-width: 200px;
+  --sidebar-bg-color: var(--mt-side);
+  --sidebar-backdrop-filter: none;
+  --sidebar-border-radius: 0px;
+  --header-bg: transparent;
+  --header-shadow: none;
+  --views-text-color: var(--mt-fg-strong);
+  --button-bg: transparent;
+  --button-hover-bg: var(--mt-hover);
+  --button-active-bg: var(--mt-press);
+  --button-border-radius: 0;
+  --button-focus-outline-color: var(--mt-accent);
+  --indicator-color: var(--mt-accent);
+  --resizer-hover-bg-color: var(--mt-accent);
+
+  /* 缩略图 */
+  --image-border-width: 3px;
+  --image-border-color: var(--mt-line);
+  --image-hover-border-color: light-dark(#9aa0a6, #8e8e8e);
+  --image-current-border-color: var(--mt-accent);
+  --image-shadow: 0 0 0 1px light-dark(rgba(60, 64, 67, 0.12), rgba(0, 0, 0, 0.3)), 0 1px 3px light-dark(rgba(60, 64, 67, 0.2), rgba(0, 0, 0, 0.4));
+  --image-hover-shadow: 0 0 0 var(--image-border-width) var(--image-hover-border-color);
+  --image-current-shadow: 0 0 0 var(--image-border-width) var(--image-current-border-color);
+
+  display: grid !important;
+  grid-template-columns: 48px minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  inset-block-start: 100% !important;
+  height: var(--viewer-container-height) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-inline-end: 1px solid var(--mt-line) !important;
+  border-radius: 0 !important;
+  background-color: var(--mt-side) !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+#viewsManager[hidden] {
+  display: none !important;
+}
+
+#outerContainer.viewsManagerOpen #viewsManager {
+  inset-inline-start: 0 !important;
+}
+
+/* 窄窗口中侧栏浮在页面上方 */
+@media all and (max-width: 840px) {
+  #outerContainer.viewsManagerOpen #viewsManager {
+    box-shadow: var(--mt-shadow) !important;
+  }
+}
+
+#viewsManager .sidebarResizer {
+  inset-inline-start: calc(100% - 2px);
+  width: 4px;
+  border: 0;
+}
+
+/* 视图切换按钮（src/pdf-bridge.js） */
+#marktexTabs {
+  grid-column: 1;
+  grid-row: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  padding-top: 6px;
+}
+
+.marktex-tab {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+
+  &::before {
+    content: "";
+    width: 20px;
+    height: 20px;
+    background-color: var(--mt-fg-2);
+    -webkit-mask: var(--marktex-tab-icon) center / contain no-repeat;
+    mask: var(--marktex-tab-icon) center / contain no-repeat;
+  }
+
+  &:hover {
+    background-color: var(--mt-hover);
+
+    &::before {
+      background-color: var(--mt-fg-strong);
+    }
+  }
+
+  &:focus-visible {
+    outline: 2px solid var(--mt-accent);
+    outline-offset: -2px;
+  }
+
+  &.selected::before {
+    background-color: var(--mt-accent);
+  }
+
+  /* 选中的视图：左侧一条竖线，与 Chrome 阅读器相同 */
+  &.selected::after {
+    content: "";
+    position: absolute;
+    inset-block: 8px;
+    inset-inline-start: 0;
+    width: 3px;
+    background-color: var(--mt-accent);
+  }
+
+  &[data-icon="grid"] { --marktex-tab-icon: url(/src/reader-icons/grid.svg); }
+  &[data-icon="outline"] { --marktex-tab-icon: url(/src/reader-icons/outline.svg); }
+  &[data-icon="attach"] { --marktex-tab-icon: url(/src/reader-icons/attach.svg); }
+  &[data-icon="layers"] { --marktex-tab-icon: url(/src/reader-icons/layers.svg); }
+}
+
+/* 标题行：当前视图的名称，大纲视图右侧是“定位到当前位置”按钮 */
+#viewsManager #viewsManagerHeader {
+  grid-column: 2;
+  grid-row: 1;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+
+  #viewsManagerTitle {
+    height: 44px;
+    padding: 0 6px 0 14px;
+    box-sizing: border-box;
+
+    &::after {
+      display: none;
+    }
+
+    #viewsManagerSelector {
+      display: none;
+    }
+
+    .viewsManagerLabel {
+      text-align: start;
+      color: var(--mt-fg-2);
+      font: 500 12px/1 var(--mt-font);
+      letter-spacing: 0.02em;
+    }
+
+    .viewsManagerButton {
+      width: 32px;
+      height: 32px;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+
+      &::before {
+        width: 18px;
+        height: 18px;
+        background-color: var(--mt-fg);
+        -webkit-mask-size: contain;
+        mask-size: contain;
+        -webkit-mask-position: center;
+        mask-position: center;
+      }
+
+      &:hover {
+        background: var(--mt-hover) !important;
+      }
+    }
+  }
+}
+
+#viewsManager #viewsManagerContent {
+  grid-column: 2;
+  grid-row: 2;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-color) transparent;
+
+  #thumbnailsView {
+    padding: 8px 16px 28px;
+    gap: 34px;
+
+    > .thumbnail {
+      scroll-margin-top: 16px;
+
+      > .thumbnailImageContainer,
+      > .thumbnailImageContainer img {
+        border-radius: 0;
+      }
+
+      /* 页码写在缩略图下方 */
+      &:not(.isDragging) > .thumbnailImageContainer::after {
+        inset-block: calc(100% + 7px) auto;
+        height: auto;
+        min-width: 0;
+        border: 0;
+        border-radius: 0;
+        background: none;
+        color: var(--mt-fg-2);
+        font: 12px/1 var(--mt-font);
+      }
+
+      &:has([aria-current="page"]):not(.isDragging) > .thumbnailImageContainer::after {
+        outline: none;
+        background: none;
+        color: var(--mt-accent);
+        font-weight: 600;
+      }
+    }
+
+    > .thumbnail > .thumbnailImageContainer:hover::after,
+    > .thumbnail > .thumbnailImageContainer[aria-current="page"]:hover::after {
+      background: none;
+    }
+  }
+}
+
+/* 大纲、附件、图层：整行高亮 */
+#outlinesView,
+#attachmentsView,
+#layersView {
+  --treeitem-color: var(--mt-fg);
+  --treeitem-hover-color: var(--mt-fg-strong);
+  --treeitem-bg-color: transparent;
+  --treeitem-selected-color: var(--mt-accent);
+  --treeitem-selected-bg-color: transparent;
+  --treeitem-expanded-icon: url(/src/reader-icons/chevron-down-small.svg);
+  --treeitem-collapsed-icon: url(/src/reader-icons/chevron-right.svg);
+  box-sizing: border-box;
+  width: 100%;
+  padding: 2px 8px 24px 0;
+  overflow-x: hidden;
+}
+
+#viewsManager .treeView.withNesting > .treeItem {
+  margin-inline-start: 22px;
+}
+
+#viewsManager .treeView:not(.withNesting) > .treeItem {
+  margin-inline-start: 10px;
+}
+
+#viewsManager .treeView .treeItem > a,
+#attachmentsView > ul > li > a {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  min-width: 100%;
+  margin: 0;
+  padding: 6px 8px 6px 4px;
+  border-radius: 0;
+  color: var(--treeitem-color);
+  font: 13px/18px var(--mt-font);
+  cursor: pointer;
+
+  /* 悬停 / 选中的底色铺满整行（向左延伸到侧栏边缘） */
+  &::before {
+    content: "";
+    position: absolute;
+    z-index: -1;
+    inset-block: 0;
+    inset-inline: -400px -8px;
+  }
+
+  &:hover {
+    background: none;
+    color: var(--treeitem-hover-color);
+
+    &::before {
+      background-color: var(--mt-hover);
+    }
+  }
+}
+
+#viewsManager .treeView .treeItem.selected > a {
+  background: none;
+  color: var(--mt-accent);
+
+  &::before {
+    background-color: var(--mt-accent-soft);
+  }
+}
+
+#viewsManager .treeView.withNesting .treeItemToggler {
+  &::before {
+    top: 7px;
+    inset-inline-end: 3px;
+    width: 16px;
+    height: 16px;
+    background-color: var(--mt-fg-2);
+    -webkit-mask-size: contain;
+    mask-size: contain;
+  }
+
+  &:hover + a,
+  &:hover ~ .treeItems {
+    background: none;
+    border-radius: 0;
+  }
+
+  &:hover::before {
+    background-color: var(--mt-fg-strong);
+  }
+}
+
+#attachmentsView > ul {
+  margin: 0;
+  padding-inline-start: 14px;
 }
 
 /* 大纲标题中的公式（src/tex-lite.js） */
@@ -371,13 +993,80 @@ select {
 .tx-frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 0.1em; }
 .tx-sqrt { border-top: 1px solid currentColor; padding-top: 0.05em; }
 
-/* ---------- 图标：统一的线性图标（src/reader-icons，由 tools/build-reader-icons.cjs 生成），风格与扩展弹窗一致 ---------- */
-:root {
-  --toolbar-icon-bg-color: light-dark(rgba(60, 60, 67, 0.88), rgba(235, 235, 245, 0.86));
-  --toolbar-icon-hover-bg-color: light-dark(#1c1c1e, #ffffff);
-  --toolbar-icon-opacity: 1;
-  --doorhanger-icon-opacity: 1;
+/* ====================================================================
+   页面
+   ==================================================================== */
+.pdfViewer .page {
+  border: 0 !important;
+  border-image: none !important;
+  margin: 10px auto !important;
+  border-radius: 0;
+  box-shadow: var(--mt-page-shadow);
+}
 
+.pdfViewer:is(.scrollHorizontal, .scrollWrapped) .page,
+.pdfViewer .spread .page {
+  margin: 10px 5px !important;
+}
+
+.pdfViewer.singlePageView .page {
+  margin: 0 auto !important;
+}
+
+.pdfViewer.removePageBorders .page {
+  box-shadow: none;
+}
+
+#viewerContainer {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-color) transparent;
+}
+
+/* 选中文字的高亮色 */
+.textLayer ::selection {
+  background: light-dark(rgba(26, 115, 232, 0.3), rgba(138, 180, 248, 0.42));
+}
+
+/* 图片占位元素（src/pdf-glyphs.js）：透明，仅用于选中与复制 */
+.textLayer .marktex-image {
+  cursor: default;
+}
+
+/* 被裁剪掉、看不见的文字（src/pdf-glyphs.js）不参与选中 */
+.textLayer .marktex-clipped {
+  display: none !important;
+}
+
+/* 加载失败提示 */
+.marktex-bar {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  z-index: 100000;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  max-width: min(640px, calc(100vw - 32px));
+  padding: 12px 16px;
+  background: #323232;
+  color: #fff;
+  box-shadow: var(--mt-shadow);
+  font: 13px/1.45 var(--mt-font);
+  transform: translateX(-50%);
+}
+
+.marktex-bar a {
+  flex: none;
+  color: #8ab4f8;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+/* ====================================================================
+   图标：src/reader-icons（由 tools/build-reader-icons.cjs 生成）
+   ==================================================================== */
+:root {
+  --marktex-logo-icon: url(/src/reader-icons/logo.svg);
   --toolbarButton-viewsManagerToggle-icon: url(/src/reader-icons/sidebar.svg);
   --toolbarButton-search-icon: url(/src/reader-icons/search.svg);
   --toolbarButton-pageUp-icon: url(/src/reader-icons/chevron-up.svg);
@@ -395,7 +1084,7 @@ select {
   --toolbarButton-openFile-icon: url(/src/reader-icons/open.svg);
   --toolbarButton-presentationMode-icon: url(/src/reader-icons/present.svg);
   --toolbarButton-bookmark-icon: url(/src/reader-icons/bookmark.svg);
-  --toolbarButton-secondaryToolbarToggle-icon: url(/src/reader-icons/more.svg);
+  --toolbarButton-secondaryToolbarToggle-icon: url(/src/reader-icons/more-vert.svg);
   --toolbarButton-menuArrow-icon: url(/src/reader-icons/chevron-down-small.svg);
   --toolbarButton-viewThumbnail-icon: url(/src/reader-icons/grid.svg);
   --toolbarButton-viewOutline-icon: url(/src/reader-icons/outline.svg);
@@ -435,89 +1124,32 @@ select {
   --menuitem-checkmark-icon: url(/src/reader-icons/check.svg);
 }
 
-/* 视图切换按钮的图标随当前视图变化（data-view 由 pdf-bridge.js 设置：1 页面，2 大纲，3 附件，4 图层） */
-#viewsManager[data-view="2"] { --views-manager-button-icon: url(/src/reader-icons/outline.svg); }
-#viewsManager[data-view="3"] { --views-manager-button-icon: url(/src/reader-icons/attach.svg); }
-#viewsManager[data-view="4"] { --views-manager-button-icon: url(/src/reader-icons/layers.svg); }
+#marktexFitButton::before {
+  -webkit-mask-image: url(/src/reader-icons/fit-page.svg);
+  mask-image: url(/src/reader-icons/fit-page.svg);
+}
 
-/* 图标按比例完整显示（PDF.js 默认 mask-size: cover，非正方形区域会裁掉左右两侧） */
+#marktexFitButton[data-fit="width"]::before {
+  -webkit-mask-image: url(/src/reader-icons/fit-width.svg);
+  mask-image: url(/src/reader-icons/fit-width.svg);
+}
+
+#marktexRotateButton::before {
+  -webkit-mask-image: url(/src/reader-icons/rotate-ccw.svg);
+  mask-image: url(/src/reader-icons/rotate-ccw.svg);
+}
+
+/* 图标按比例完整显示（PDF.js 默认 mask-size: cover，非正方形区域会裁掉两侧） */
 .toolbarButton::before,
 .secondaryToolbarButton::before,
 .dropdownToolbarButton::after,
 .treeItemToggler::before,
 #viewsManager button::before,
-#viewsManager button::after,
-#viewsManager .popupMenu button::before,
-#viewsManager .popupMenu button::after {
+#viewsManager .popupMenu button::before {
   -webkit-mask-size: contain !important;
   mask-size: contain !important;
   -webkit-mask-position: center !important;
   mask-position: center !important;
   -webkit-mask-repeat: no-repeat !important;
   mask-repeat: no-repeat !important;
-}
-
-/* 工具栏中的竖向分隔线更淡，按钮悬停为 5px 圆角的浅灰底 */
-.verticalToolbarSeparator {
-  background-color: var(--separator-color) !important;
-  opacity: 0.7;
-}
-
-.treeView,
-#outlinesView,
-#attachmentsView,
-#layersView {
-  --treeitem-expanded-icon: url(/src/reader-icons/chevron-down-small.svg) !important;
-  --treeitem-collapsed-icon: url(/src/reader-icons/chevron-right.svg) !important;
-}
-
-.treeItemToggler::before {
-  background-color: var(--toolbar-icon-bg-color) !important;
-}
-
-/* 图片占位元素（src/pdf-glyphs.js）：透明，仅用于选中与复制 */
-.textLayer .marktex-image {
-  cursor: default;
-}
-
-/* ---------- 工具栏布局 ---------- */
-/* 上一页 / 下一页、缩小 / 放大之间不需要分隔线 */
-#toolbarViewer .splitToolbarButtonSeparator {
-  display: none !important;
-}
-
-/* 搜索按钮移到右侧后，查找栏向左展开 */
-.marktex-find {
-  position: relative;
-}
-
-.marktex-find #findbar {
-  inset-inline-start: auto !important;
-  inset-inline-end: 0 !important;
-}
-
-/* 页码输入框：居中的小胶囊，与总页数组成“3 / 12” */
-#pageNumber {
-  width: 38px !important;
-  height: 24px !important;
-  padding: 0 4px !important;
-  text-align: center !important;
-  font: 500 13px/24px var(--marktex-font) !important;
-  font-variant-numeric: tabular-nums;
-  background-color: var(--field-bg-color) !important;
-  border-radius: 6px !important;
-}
-
-#pageNumber::-webkit-inner-spin-button,
-#pageNumber::-webkit-outer-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-#numPages {
-  margin-inline-start: 5px !important;
-  padding: 0 !important;
-  color: light-dark(rgba(60, 60, 67, 0.6), rgba(235, 235, 245, 0.6)) !important;
-  font: 13px/1 var(--marktex-font) !important;
-  font-variant-numeric: tabular-nums;
 }

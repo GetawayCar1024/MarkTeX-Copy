@@ -8,6 +8,7 @@
   if (CCM.pdfSelection) return;
 
   const CJK = /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/;
+  const CJK_PUNCT = /^[\u3000-\u303f\uff01-\uff0f\uff1a-\uff20\uff3b-\uff40\uff5b-\uff65]$/;
   const SENTENCE_END = /[.。!?！？:：;；…]["”’)）\]]*$/;
   const BULLET_RE = /^([•●○◦▪▫■□‣⁃∙·▸►\-–—*∗])\s+(.*)$/;
   const BULLET_CHAR = /^[•●○◦▪▫■□‣⁃∙▸►–—∗*]$/;
@@ -19,6 +20,7 @@
   const OTHER_ENUM_RE = /^(\(\d{1,3}\)|（\d{1,3}）|[（(][一二三四五六七八九十]+[)）]|[一二三四五六七八九十]+、|[a-zA-Z][.)]\s)/;
 
   const BIG_OPS = new Set(Array.from('∑∏∐∫∬∭∮⋃⋂⨁⨂⨀⨄⋁⋀'));
+  const LIMIT_FUNCS = new Set(['lim', 'limsup', 'liminf', 'max', 'min', 'sup', 'inf', 'det', 'gcd', 'Pr']);
   const MATH_FONT = /(^|\+)(CMMI|CMSY|CMEX|CMBSY|CMMIB|MSAM|MSBM|EUFM|EUSM|EUEX|RSFS|LMMath|LatinModernMath|STIX\w*Math|XITS\w*Math|Cambria\W?Math|TeXGyre\w*Math|NewCM\w*Math|FiraMath|Asana|MTMI|MTSY|MTEX|Euclid|MathJax)/i;
   const EXT_FONT = /(^|\+)(CMEX|EUEX|MTEX)|Extension/i;
   const ITALIC_FONT = /Italic|Oblique|(^|\+)CMTI|-It$/i;
@@ -26,6 +28,9 @@
   const NEUTRAL_RE = /^[\s\d()[\]{}+\-−=<>.,;:!|/*'′·…]+$/;
 
   const escHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // macOS 生成的 PDF 常把部分汉字映射为外形相同的康熙部首（“⼀”U+2F00 而不是“一”U+4E00），复制出的文字无法搜索；
+  // 换回对应的统一汉字（每个字符一对一，长度不变）
+  const fixCjk = (s) => s.replace(/[\u2e9f\u2ef3\u2f00-\u2fd5]/g, (c) => c.normalize('NFKC'));
   const median = (values) => {
     if (!values.length) return 0;
     const v = [...values].sort((a, b) => a - b);
@@ -155,13 +160,29 @@
       atoms.push({ atom: true, tex, x0: r.x0, x1: r.x1, y: num.length && den.length ? r.y - 0.25 * sz : baselineOf(num.concat(den), sz), s: sz });
     }
 
-    // 1) 带上下限的大型运算符（上下限与运算符水平重叠，位于其上方 / 下方）
+    // 1) 带上下限的大型运算符（上下限与运算符水平重叠，位于其上方 / 下方）；
+    //    行间公式中的 \max、\min、\lim 等的下限也写在正下方
     for (const op of els) {
-      if (used.has(op) || op.atom || Array.from(op.str.trim()).length !== 1 || !BIG_OPS.has(op.str.trim())) continue;
+      if (used.has(op) || op.atom) continue;
+      const name = op.str.trim();
+      const big = Array.from(name).length === 1 && BIG_OPS.has(name);
+      if (!big && !LIMIT_FUNCS.has(name)) continue;
       const cy = op.isExt ? op.y - 0.65 * op.s : op.y + 0.3 * op.s;
       const lims = els.filter((e) => e !== op && !used.has(e) && !e.atom && e.s < op.s * 0.92 &&
-        overlapX(e, op) > 0.25 * Math.min(e.x1 - e.x0, op.x1 - op.x0) && Math.abs(e.y - cy) < 2.8 * op.s);
+        overlapX(e, op) > 0.25 * Math.min(e.x1 - e.x0, op.x1 - op.x0) && Math.abs(e.y - cy) < 2.8 * op.s &&
+        (big || e.y < op.y - 0.45 * op.s));
       if (!lims.length) continue;
+      // 比运算符宽的上下限：同一行上与之相连的部分也属于上下限（如 \max 下方的 1\le i\le n）
+      for (let grow = true; grow;) {
+        grow = false;
+        for (const e of els) {
+          if (e === op || e.atom || used.has(e) || lims.includes(e) || e.s >= op.s * 0.92) continue;
+          if (lims.some((q) => Math.abs(q.y - e.y) < 0.25 * q.s && Math.max(e.x0 - q.x1, q.x0 - e.x1) < 0.6 * q.s)) {
+            lims.push(e);
+            grow = true;
+          }
+        }
+      }
       lims.forEach((e) => used.add(e));
       used.add(op);
       const lo = lims.filter((e) => e.y < cy);
@@ -169,7 +190,7 @@
       atoms.push({
         atom: true,
         base: true,
-        tex: texStr(op.str) + (lo.length ? `_{${parseMath(copyEls(lo), depth + 1)}}` : '') +
+        tex: texOf(op) + (lo.length ? `_{${parseMath(copyEls(lo), depth + 1)}}` : '') +
           (up.length ? `^{${parseMath(copyEls(up), depth + 1)}}` : '') + ' ',
         x0: Math.min(op.x0, ...lims.map((e) => e.x0)),
         x1: Math.max(op.x1, ...lims.map((e) => e.x1)),
@@ -376,7 +397,7 @@
     const len = str.length || 1;
     const font = CCM.pdfFontName ? CCM.pdfFontName(pn, item.fontName) : '';
     return {
-      str: str.slice(st, en),
+      str: fixCjk(str.slice(st, en)),
       x0: e + (item.width * st) / len,
       x1: e + (item.width * en) / len,
       y: f,
@@ -470,6 +491,9 @@
       const sizes = [];
       for (const p of arr) if (!p.isExt && p.str.trim()) for (let k = 0; k < Math.min(p.str.length, 50); k++) sizes.push(p.s);
       const bodyS = opts.bodyS || median(sizes) || 10;
+      // 被裁剪掉、看不见的内容（macOS 打印时跨页的一行在上下两页各画一次）。同一行的文字、公式统一按正文字号判断；
+      // 分数线在数学轴上，比基线高约 0.25em
+      if (CCM.pdfClipped && !opts.noTables) arr = arr.filter((p) => p.bullet || !CCM.pdfClipped(page, p.rule ? p.y - 0.25 * bodyS : p.y, bodyS));
       // 着重号（中文排版中字下的小圆点）是装饰，不是内容
       // 带着重号的文字按加粗处理（点在字的上方或下方，覆盖文字的大部分宽度）
       const isDot = (p) => !p.geo && !p.rule && !p.bullet && EMPHASIS_DOTS.test(p.str.trim()) && p.s < 0.8 * bodyS;
@@ -602,13 +626,21 @@
         }
       }
 
+      const sizeOf = (arr) => {
+        const sz = [];
+        for (const p of arr) for (let k = 0; k < Math.min(p.str.length, 50); k++) sz.push(p.s);
+        return median(sz);
+      };
       for (const c of clusters) {
         const items = c.items.sort((a, b) => a.x0 - b.x0);
         if (!items.some((p) => p.str.trim())) continue;
         const normal = items.filter((p) => !p.isExt && !isRad(p) && p.str.trim());
-        const sz = [];
-        for (const p of normal) for (let k = 0; k < Math.min(p.str.length, 50); k++) sz.push(p.s);
-        const s = median(sz) || items[0].s;
+        const s = sizeOf(normal) || items[0].s;
+        // 行高按正文文字计算：MathJax 公式的字号通常比正文大一些，公式多的行不能因此被当成标题或另起一段。
+        // 列表符号的字号可能与正文不同，不算在内；只有公式和标点的行不会是标题
+        const textual = normal.filter((p) => !p.geo && !p.mathFont && !BULLET_CHAR.test(p.str.trim()));
+        const words = sizeOf(textual.filter((p) => /[\p{L}\p{N}]/u.test(p.str)));
+        const ts = words || sizeOf(textual);
         const B = normal.length ? baselineOf(normal.map((p) => ({ ...p })), s) : c.y;
         const tops = items.map((p) => boxOf(p)[1]);
         const bots = items.map((p) => boxOf(p)[0]);
@@ -618,7 +650,9 @@
           order: Math.min(...items.map((p) => p.order)),
           s,
           B,
-          h: s,
+          baseTop: info.top - B,
+          h: ts || s,
+          mathOnly: !words,
           top: info.top - Math.max(...tops),
           bottom: info.top - Math.min(...bots),
           left: Math.min(...items.map((p) => p.x0)),
@@ -731,19 +765,31 @@
     const total = chars(judged);
     if (total && MONO_FONT.test(solid[0].font) && chars(monoItems) / total >= 0.7 && !solid.some((p) => p.geo || p.rule)) {
       const cw = monoItems.reduce((a, p) => a + (p.x1 - p.x0), 0) / Math.max(1, monoItems.reduce((a, p) => a + p.str.length, 0)) || 0.6 * s;
-      let txt = '';
-      let prevItem = null;
-      for (const p of [...solid].sort((a, b) => a.x0 - b.x0)) {
-        if (prevItem) {
-          const gap = p.x0 - prevItem.x1;
-          if (gap > 0.3 * cw) txt += ' '.repeat(Math.max(1, Math.round(gap / cw)));
+      const codeOf = (arr) => {
+        let txt = '';
+        let prevItem = null;
+        for (const p of arr) {
+          if (prevItem) {
+            const gap = p.x0 - prevItem.x1;
+            if (gap > 0.3 * cw) txt += ' '.repeat(Math.max(1, Math.round(gap / cw)));
+          }
+          txt += p.str;
+          prevItem = p;
         }
-        txt += p.str;
-        prevItem = p;
-      }
+        return txt.replace(/\s+$/, '');
+      };
+      const byX = [...solid].sort((a, b) => a.x0 - b.x0);
       line.mono = true;
       line.charW = cw;
-      line.codeText = txt.replace(/\s+$/, '');
+      line.codeText = codeOf(byX);
+      // 编辑器打印的行号栏：行首单独的数字，与代码之间隔开一段距离（是否真是行号，在 render 中按整个代码块判断）。
+      // 行号与代码的字号或字体不同，或者间距不是整数个字符宽（代码本身的空格总是整数个字符宽）
+      const [f, g] = byX;
+      const gap = g ? (g.x0 - f.x1) / cw : 0;
+      const apart = g && gap > 1.2 && (Math.abs(f.s - g.s) > 0.05 * g.s || f.font !== g.font || Math.abs(gap - Math.round(gap)) > 0.15);
+      if (/^\d{1,5}$/.test(f.str.trim()) && (!g || apart)) {
+        line.lineNo = { n: +f.str.trim(), x0: f.x0, x1: f.x1, text: g ? codeOf(byX.slice(1)) : '', left: g ? g.x0 : null };
+      }
     }
 
     // 与公式相邻的数字、括号、运算符、函数名并入公式
@@ -866,7 +912,7 @@
       cur.eol = it.eol;
     }
     for (const l of lines) {
-      l.text = l.text.replace(/\s+/g, ' ').trim();
+      l.text = fixCjk(l.text.replace(/\s+/g, ' ').trim());
       l.parts = [{ t: 'text', s: l.text }];
       l.display = false;
       l.legacy = true;
@@ -883,25 +929,41 @@
     return median(arr) || (lines[0] && lines[0].h) || 12;
   }
 
-  // 跨多页选择时，去掉在多页的页面边缘重复出现的页眉 / 页脚（幻灯片导航、作者、页码等）
+  // 跨多页选择时，去掉在多页的页面边缘重复出现的页眉 / 页脚（幻灯片导航、作者、页码等）。
+  // 页眉页脚是页面最上 / 最下的一行，字号不大于正文，而且大部分页面都有；
+  // 偶尔有两页恰好以同名小标题（如“【样例 1 输入】”）开头，不能当成页眉删掉
   function dropRunningHeaders(lines) {
     const pages = new Set(lines.map((l) => l.page));
     if (pages.size < 2) return lines;
-    // 代码行、只有符号的行（如单独的“{”）不会是页眉页脚
-    const edge = (l) => {
-      if (!l.pageH || l.mono || !/[\p{L}\p{N}]/u.test(l.text)) return false;
-      const y = (l.top - l.pageTop) / l.pageH;
-      return y < 0.12 || y > 0.88;
-    };
-    const key = (l) => ((l.top - l.pageTop) / l.pageH < 0.5 ? 'T' : 'B') + l.text.replace(/\d+/g, '#').replace(/\s+/g, '');
-    const seen = new Map();
+    const bodyH = bodyHeight(lines);
+    const outer = new Map();
     for (const l of lines) {
-      if (!edge(l)) continue;
-      const k = key(l);
-      if (!seen.has(k)) seen.set(k, new Set());
-      seen.get(k).add(l.page);
+      const o = outer.get(l.page) || { top: Infinity, bottom: -Infinity };
+      o.top = Math.min(o.top, l.top);
+      o.bottom = Math.max(o.bottom, l.bottom);
+      outer.set(l.page, o);
     }
-    return lines.filter((l) => !(edge(l) && seen.get(key(l)).size >= 2));
+    // 代码行、只有符号的行（如单独的“{”）、比正文大的标题不会是页眉页脚
+    const edge = (l) => {
+      if (!l.pageH || l.mono || l.table || l.image || l.h > bodyH * 1.1 || !/[\p{L}\p{N}]/u.test(l.text)) return null;
+      const y = (l.top - l.pageTop) / l.pageH;
+      const o = outer.get(l.page);
+      if (y < 0.12 && l.top - o.top < 0.5 * l.h) return 'T';
+      if (y > 0.88 && o.bottom - l.bottom < 0.5 * l.h) return 'B';
+      return null;
+    };
+    const cands = [];
+    for (const l of lines) {
+      const e = edge(l);
+      if (e) cands.push({ l, e, t: l.text.replace(/\d+/g, '#').replace(/\s+/g, '') });
+    }
+    // 别的页面同一边缘有相同的一行；或者一行是另一行的开头（页眉左侧固定、右侧是随章节变化的标题，有的页只有左侧）
+    const alike = (a, b) => a.t === b.t || (Math.min(a.t.length, b.t.length) >= 8 && (a.t.startsWith(b.t) || b.t.startsWith(a.t)));
+    const repeated = new Set(cands.filter((a) => cands.some((b) => b.l.page !== a.l.page && b.e === a.e && alike(a, b))));
+    const covered = { T: new Set(), B: new Set() };
+    for (const c of repeated) covered[c.e].add(c.l.page);
+    const drop = new Set([...repeated].filter((c) => covered[c.e].size >= 0.5 * pages.size).map((c) => c.l));
+    return lines.filter((l) => !drop.has(l));
   }
 
   function mergeTextParts(parts) {
@@ -924,7 +986,8 @@
     }
     const lc = x.t === 'text' ? x.s.slice(-1) : '';
     const fc = y.t === 'text' ? y.s[0] : '';
-    const sep = lc && fc && (CJK.test(lc) || CJK.test(fc)) ? '' : ' ';
+    // 中文标点前后不加空格（如公式结尾的一行，下一行以“，”开头）
+    const sep = (lc && fc && (CJK.test(lc) || CJK.test(fc))) || CJK_PUNCT.test(fc) || CJK_PUNCT.test(lc) ? '' : ' ';
     return mergeTextParts([...a, ...(sep ? [{ t: 'text', s: sep }] : []), ...b]);
   }
 
@@ -970,13 +1033,15 @@
       if (l.mono) return { type: 'code' };
       if (l.display && centered(l)) return { type: 'display' };
       const ratio = l.h / bodyH;
-      if (ratio >= 1.15 && l.text.length <= 120 && !SENTENCE_END.test(l.text.replace(/[:：]$/, ''))) {
+      if (ratio >= 1.15 && !l.mathOnly && l.text.length <= 120 && !SENTENCE_END.test(l.text.replace(/[:：]$/, ''))) {
         return { type: 'h', level: ratio >= 1.7 ? 1 : ratio >= 1.28 ? 2 : 3 };
       }
       const first = l.parts[0];
       if (first && first.t === 'text') {
         let m = first.s.match(BULLET_RE);
         if (m) return { type: 'ul', strip: first.s.length - m[2].length };
+        // 列表符号单独成段（其后是粗体、代码或公式）
+        if (BULLET_CHAR.test(first.s.trim()) && l.parts.length > 1) return { type: 'ul', strip: first.s.length };
         m = first.s.match(ORDERED_RE);
         if (m) return { type: 'ol', n: +m[1], strip: first.s.length - m[2].length };
         if (OTHER_ENUM_RE.test(first.s)) return { type: 'p', forceNew: true };
@@ -986,7 +1051,10 @@
     };
     const stripParts = (parts, n) => {
       if (!n) return parts.map((p) => ({ ...p }));
-      return [{ ...parts[0], s: parts[0].s.slice(n) }, ...parts.slice(1).map((p) => ({ ...p }))].filter((p) => p.t !== 'text' || p.s);
+      const out = [{ ...parts[0], s: parts[0].s.slice(n) }, ...parts.slice(1).map((p) => ({ ...p }))];
+      while (out.length && out[0].t === 'text' && !out[0].s.trim()) out.shift();
+      if (out[0] && out[0].t === 'text') out[0].s = out[0].s.replace(/^\s+/, '');
+      return out.filter((p) => p.t !== 'text' || p.s);
     };
 
     const blocks = [];
@@ -1002,6 +1070,14 @@
         continue;
       }
       if (k.type === 'table') {
+        // 跨页的表格：上一页底部的表格在本页顶部继续（位置、列数相同）；Chrome 打印时会在新页重复表头，去掉重复的那一行
+        const rowText = (r) => r.map((c) => c.map((p) => (p.t === 'math' ? p.tex : p.s)).join('').replace(/\s+/g, '')).join('|');
+        if (cur && cur.type === 'table' && prev && prev.table && l.page === prev.page + 1 && l.pageH && prev.pageH &&
+          (prev.bottom - prev.pageTop) / prev.pageH > 0.7 && (l.top - l.pageTop) / l.pageH < 0.3 &&
+          Math.abs(l.left - prev.left) < 3 && Math.abs(l.right - prev.right) < 3 && cur.rows[0].length === l.rows[0].length) {
+          cur.rows = cur.rows.concat(rowText(l.rows[0]) === rowText(cur.rows[0]) ? l.rows.slice(1) : l.rows);
+          continue;
+        }
         cur = { type: 'table', rows: l.rows };
         blocks.push(cur);
         continue;
@@ -1030,10 +1106,14 @@
           // 跨页：上一页最后一行不是句末才接续；标题不跨页接续
           fresh = SENTENCE_END.test(curText) || k.type === 'h';
         } else {
-          // 行距按基线计算（含公式的行顶部更高，用行顶会高估行距）
+          // 行距按基线计算（含公式的行顶部更高，用行顶会高估行距）；行内的分式、上下标会把行距撑大
           const g = prev.B != null && l.B != null ? prev.B - l.B : l.top - prev.top;
-          if (g < 0 || g > lineGap * 1.45) fresh = true;
+          const extra = prev.baseTop != null && l.baseTop != null
+            ? Math.max(0, prev.bottom - prev.baseTop - 0.35 * prev.h) + Math.max(0, l.baseTop - l.top - 0.95 * l.h) : 0;
+          if (g < 0 || g > lineGap * 1.45 + extra) fresh = true;
           else if (Math.abs(l.h - prev.h) > bodyH * 0.2) fresh = true;
+          // 标题折行时上一行会排到右边界；没排满的是另一个标题（如居中的题目名之后紧跟“题目背景”）
+          else if (cur.type === 'h' && prev.right < maxRight - 2 * prev.h) fresh = true;
           // 列表项之后，比列表标记更靠左的一行是新段落
           else if ((cur.type === 'ul' || cur.type === 'ol') && l.left < cur.left0 - 0.3 * bodyH) fresh = true;
           // 句末且没有排满一行：段落结束（中文两端对齐，差一个字就说明是段尾）
@@ -1163,8 +1243,19 @@
         html.push(`<table><thead>${htmlRow(rows[0], 'th')}</thead><tbody>${rows.slice(1).map((r) => htmlRow(r, 'td')).join('')}</tbody></table>`);
         text.push(rows.map((r) => r.map((c) => partsText(c).replace(/\s+/g, ' ').trim()).join('\t')).join('\n'));
       } else if (b.type === 'code') {
-        const base = Math.min(...b.lines.map((l) => l.left));
         const cw = median(b.lines.map((l) => l.charW).filter(Boolean)) || 6;
+        // 行号栏：行首的数字依次加一、左端或右端对齐，代码都在行号栏右侧（过长折行的续行没有行号）。复制时去掉行号
+        const nos = b.lines.map((l) => l.lineNo).filter(Boolean);
+        const aligned = (key) => nos.every((n) => Math.abs(n[key] - nos[0][key]) < 0.3 * cw);
+        const edge = nos.length ? Math.max(...nos.map((n) => n.x1)) + 0.8 * cw : 0;
+        const gutter = !!b.lines[0].lineNo && nos.every((n, i) => (i ? n.n === nos[i - 1].n + 1 : nos.length > 1 || n.n === 1)) &&
+          nos.filter((n) => n.left != null).length >= nos.length / 2 &&
+          (aligned('x0') || aligned('x1')) && nos.every((n) => n.left == null || n.left > edge) &&
+          b.lines.every((l) => l.lineNo || l.left > edge);
+        const leftOf = (l) => (gutter && l.lineNo ? l.lineNo.left : l.left);
+        const textOf = (l) => (gutter && l.lineNo ? l.lineNo.text : l.codeText);
+        const lefts = b.lines.map(leftOf).filter((x) => x != null);
+        const base = lefts.length ? Math.min(...lefts) : 0;
         const steps = [];
         for (let i = 1; i < b.lines.length; i++) if (b.lines[i].page === b.lines[i - 1].page) steps.push(b.lines[i].top - b.lines[i - 1].top);
         const step = median(steps.filter((x) => x > 0)) || 0;
@@ -1172,7 +1263,8 @@
         b.lines.forEach((l, i) => {
           const p = b.lines[i - 1];
           if (p && step && p.page === l.page && l.top - p.top > step * 1.6) out.push('');
-          out.push(' '.repeat(Math.max(0, Math.round((l.left - base) / cw))) + l.codeText);
+          const x = leftOf(l);
+          out.push(x == null ? '' : ' '.repeat(Math.max(0, Math.round((x - base) / cw))) + textOf(l));
         });
         const body = out.join('\n');
         const fence = /```/.test(body) ? '````' : '```';
