@@ -68,6 +68,10 @@
       'pdf.openNative': '用自带阅读器打开',
       'pdf.fitPage': '适合页面',
       'pdf.fitWidth': '适合页宽',
+      'pdf.viewPages': '页面',
+      'pdf.viewOutline': '大纲',
+      'pdf.viewAttachments': '附件',
+      'pdf.viewLayers': '图层',
       'notify.title': 'MarkTeX Copy',
     },
     en: {
@@ -135,6 +139,10 @@
       'pdf.openNative': 'Open in built-in viewer',
       'pdf.fitPage': 'Fit to page',
       'pdf.fitWidth': 'Fit to width',
+      'pdf.viewPages': 'Pages',
+      'pdf.viewOutline': 'Outline',
+      'pdf.viewAttachments': 'Attachments',
+      'pdf.viewLayers': 'Layers',
       'notify.title': 'MarkTeX Copy',
     },
   };

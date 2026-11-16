@@ -110,19 +110,30 @@
     else if (currentUrl) location.href = currentUrl.split('#')[0] + '#marktex-native';
   }
 
-  // ---------- 工具栏：仿 Chrome 自带阅读器的布局 ----------
+  // ---------- 工具栏布局 ----------
   //   左：侧栏开关、文档标题
-  //   中：页码 | 缩小、缩放比例、放大 | 适合页面 / 页宽、旋转
-  //   右：搜索、MarkTeX 菜单 | 批注工具 | 下载、打印、更多
+  //   中：翻页与页码、缩放（各合成一组），适合页面 / 页宽、旋转
+  //   右：搜索、MarkTeX 菜单，批注工具，下载、打印、更多
   const make = (tag, props = {}) => Object.assign(document.createElement(tag), props);
-  const separator = () => make('div', { className: 'verticalToolbarSeparator marktex-separator' });
+  const $ = (id) => document.getElementById(id);
+  const group = (cls, children) => {
+    const g = make('div', { className: `marktex-group ${cls}` });
+    g.append(...children);
+    return g;
+  };
+  // 扩展的语言、快捷键设置改变时更新文字
+  const onSettingsChanged = (fn) => {
+    try {
+      chrome.storage.onChanged.addListener((c, area) => { if (area === 'sync' && (c.language || c.shortcuts)) withLanguage(fn); });
+    } catch (_) { /* ignore */ }
+  };
 
   function layoutToolbar(app) {
-    const left = document.getElementById('toolbarViewerLeft');
-    const middle = document.getElementById('toolbarViewerMiddle');
-    const toggle = document.getElementById('viewsManagerToggleButton');
-    const numPages = document.getElementById('numPages');
-    if (!left || !middle || !toggle || !numPages || document.getElementById('marktexTitle')) return;
+    const middle = $('toolbarViewerMiddle');
+    const toggle = $('viewsManagerToggleButton');
+    const numPages = $('numPages');
+    const [prev, next, zoomOut, zoomIn, scale] = ['previous', 'next', 'zoomOutButton', 'zoomInButton', 'scaleSelectContainer'].map($);
+    if (!middle || !toggle || !numPages || !prev || !next || !zoomOut || !zoomIn || !scale || $('marktexTitle')) return;
 
     // 文档标题（标签页标题里还有文件名等，这里只显示文档自己的标题或文件名）
     const title = make('span', { id: 'marktexTitle' });
@@ -139,12 +150,14 @@
     app.eventBus.on('documentloaded', setTitle);
     app.eventBus.on('metadataloaded', setTitle);
 
-    // 页码移到中间
-    middle.prepend(numPages.parentElement, separator());
-    // 缩放比例放在缩小、放大按钮之间
-    const zoomIn = document.getElementById('zoomInButton');
-    const scale = document.getElementById('scaleSelectContainer');
-    if (zoomIn && scale) scale.after(zoomIn);
+    // 翻页按钮与页码合成一组“⌃ 3 / 12 ⌄”，缩放合成一组“− 100% +”，都放在中间。
+    // 翻页按钮原来所在的分组在窄窗口中隐藏（hiddenSmallView），移出后由按钮自己带上这个类
+    const leftovers = [prev.parentElement, zoomOut.parentElement];
+    prev.classList.add('hiddenSmallView');
+    next.classList.add('hiddenSmallView');
+    const pages = group('marktex-pages', [prev, numPages.parentElement, next]);
+    const zoom = group('marktex-zoom', [zoomOut, scale, zoomIn]);
+    for (const g of leftovers) if (!g.querySelector('button, input, select')) g.remove();
 
     // 适合页面 / 适合页宽（按当前状态切换），逆时针旋转
     const fit = make('button', { id: 'marktexFitButton', className: 'toolbarButton', type: 'button' });
@@ -161,26 +174,28 @@
     rotate.addEventListener('click', () => app.rotatePages(-90));
     app.eventBus.on('scalechanging', syncFit);
     withLanguage(syncFit);
-    middle.append(separator(), fit, rotate);
+    middle.append(pages, zoom, fit, rotate);
 
-    // 右侧：下载在打印之前（与 Chrome 一致）
-    const download = document.getElementById('downloadButton');
-    const print = document.getElementById('printButton');
+    // 右侧：下载在打印之前
+    const download = $('downloadButton');
+    const print = $('printButton');
     if (download && print) print.before(download);
   }
 
-  // ---------- 侧栏：左侧一列视图切换按钮（缩略图 / 大纲 / 附件 / 图层），代替 PDF.js 的下拉菜单 ----------
-  function buildSidebarTabs() {
-    const vm = document.getElementById('viewsManager');
-    if (!vm || document.getElementById('marktexTabs')) return;
-    const strip = make('div', { id: 'marktexTabs' });
-    strip.setAttribute('role', 'tablist');
-    const views = [['thumbnailsViewMenu', 'grid'], ['outlinesViewMenu', 'outline'], ['attachmentsViewMenu', 'attach'], ['layersViewMenu', 'layers']];
-    for (const [id, icon] of views) {
-      const source = document.getElementById(id);
+  // ---------- 侧栏：顶部的分段控件（页面 / 大纲 / 附件 / 图层），代替 PDF.js 的下拉菜单 ----------
+  function buildSidebarViews() {
+    const title = $('viewsManagerTitle');
+    if (!title || $('marktexViews')) return;
+    const seg = make('div', { id: 'marktexViews', className: 'marktex-segmented' });
+    seg.setAttribute('role', 'tablist');
+    const views = [['thumbnailsViewMenu', 'pdf.viewPages'], ['outlinesViewMenu', 'pdf.viewOutline'], ['attachmentsViewMenu', 'pdf.viewAttachments'], ['layersViewMenu', 'pdf.viewLayers']];
+    const tabs = [];
+    // 只有一种视图可选（没有大纲等）时不显示成分段控件，只作为标题
+    const syncCount = () => seg.classList.toggle('single', tabs.filter(([t]) => !t.hidden).length < 2);
+    for (const [id, key] of views) {
+      const source = $(id);
       if (!source) continue;
-      const tab = make('button', { type: 'button', className: 'marktex-tab' });
-      tab.dataset.icon = icon;
+      const tab = make('button', { type: 'button', className: 'marktex-seg' });
       tab.setAttribute('role', 'tab');
       tab.addEventListener('click', () => source.click());
       // 与 PDF.js 菜单项的状态同步：没有大纲 / 附件 / 图层时隐藏，选中的视图高亮
@@ -189,56 +204,67 @@
         const selected = source.classList.contains('selected');
         tab.classList.toggle('selected', selected);
         tab.setAttribute('aria-selected', String(selected));
-        tab.title = tab.ariaLabel = source.textContent.trim();
+        tab.title = source.textContent.trim();
+        syncCount();
       };
       new MutationObserver(sync).observe(source, { attributes: true, childList: true, subtree: true, characterData: true });
+      tabs.push([tab, key]);
+      seg.appendChild(tab);
       sync();
-      strip.appendChild(tab);
     }
-    vm.prepend(strip);
+    const label = () => { for (const [tab, key] of tabs) tab.textContent = CCM.t(key); };
+    withLanguage(label);
+    onSettingsChanged(label);
+    title.prepend(seg);
   }
 
-  // ---------- 工具栏上的 MarkTeX 菜单 ----------
+  // ---------- 工具栏上的 MarkTeX 菜单：与扩展弹窗中“复制选中内容”一组相同的条目、图标和快捷键 ----------
+  const MENU = [
+    { header: 'popup.groupCopy' },
+    { action: 'markdown', text: 'Markdown', tile: 'blue', icon: 'fmt-markdown' },
+    { action: 'html', label: 'popup.rowHtml', tile: 'orange', icon: 'fmt-html' },
+    { action: 'html-source', label: 'popup.rowHtmlSource', tile: 'gray', icon: 'fmt-source' },
+    null,
+    { action: 'native', label: 'pdf.openNative', tile: 'indigo', icon: 'open-native' },
+  ];
+
   function buildToolbar() {
-    const right = document.getElementById('toolbarViewerRight');
-    if (!right || document.getElementById('marktexButton')) return;
-    const wrap = document.createElement('div');
-    wrap.className = 'marktex-menu-wrap';
-    const btn = document.createElement('button');
-    btn.id = 'marktexButton';
-    btn.type = 'button';
-    btn.className = 'marktex-button';
+    const right = $('toolbarViewerRight');
+    if (!right || $('marktexButton')) return;
+    const wrap = make('div', { className: 'marktex-menu-wrap' });
+    const btn = make('button', { id: 'marktexButton', type: 'button', className: 'marktex-button', title: 'MarkTeX Copy' });
     btn.setAttribute('aria-haspopup', 'menu');
     btn.setAttribute('aria-expanded', 'false');
     btn.innerHTML = '<span class="marktex-logo" aria-hidden="true"></span><span class="marktex-label">MarkTeX</span><span class="marktex-caret" aria-hidden="true"></span>';
-    const menu = document.createElement('div');
-    menu.className = 'marktex-menu';
+    const menu = make('div', { className: 'marktex-menu', hidden: true });
     menu.setAttribute('role', 'menu');
-    menu.hidden = true;
-    const entries = [['markdown', 'menu.markdown'], ['html', 'menu.html'], ['html-source', 'menu.html-source'], null, ['native', 'pdf.openNative']];
-    const render = () => {
-      btn.title = CCM.t('menu.markdown');
+    const render = (shortcuts = {}) => {
       menu.textContent = '';
-      for (const it of entries) {
+      for (const it of MENU) {
         if (!it) {
-          const hr = document.createElement('div');
-          hr.className = 'marktex-sep';
-          menu.appendChild(hr);
-          continue;
+          menu.appendChild(make('div', { className: 'marktex-sep' }));
+        } else if (it.header) {
+          menu.appendChild(make('div', { className: 'marktex-menu-title', textContent: CCM.t(it.header) }));
+        } else {
+          const b = make('button', { type: 'button' });
+          b.setAttribute('role', 'menuitem');
+          b.dataset.action = it.action;
+          const tile = make('span', { className: `marktex-tile tile-${it.tile}` });
+          tile.dataset.icon = it.icon;
+          const key = shortcuts[it.action] ? CCM.shortcutLabel(shortcuts[it.action]) : '';
+          b.append(tile, make('span', { className: 'marktex-item-label', textContent: it.text || CCM.t(it.label) }), make('span', { className: 'marktex-kbd', textContent: key }));
+          menu.appendChild(b);
         }
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.setAttribute('role', 'menuitem');
-        b.textContent = CCM.t(it[1]);
-        b.dataset.action = it[0];
-        menu.appendChild(b);
       }
     };
+    const update = () => {
+      try {
+        chrome.storage.sync.get({ shortcuts: CCM.DEFAULTS && CCM.DEFAULTS.shortcuts }, (s) => render(s.shortcuts || {}));
+      } catch (_) { render(); }
+    };
     const setOpen = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
-    withLanguage(render);
-    try {
-      chrome.storage.onChanged.addListener((c, area) => { if (area === 'sync' && c.language) withLanguage(render); });
-    } catch (_) { /* ignore */ }
+    withLanguage(update);
+    onSettingsChanged(update);
 
     wrap.addEventListener('mousedown', (e) => e.preventDefault()); // 点击菜单时不清除页面中的选区
     btn.addEventListener('click', () => setOpen(menu.hidden));
@@ -250,21 +276,37 @@
       else if (CCM.copyFormat) CCM.copyFormat(b.dataset.action);
     });
     document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) setOpen(false); });
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') setOpen(false); });
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape' || menu.hidden) return;
+      if (menu.contains(document.activeElement)) btn.focus();
+      setOpen(false);
+    });
+    // 键盘操作：在按钮上按 ↓ / ↑ 打开菜单，菜单中用 ↓ / ↑ 移动（只在用键盘时移动焦点，鼠标点击不改变焦点和页面选区）
+    const focusItem = (step) => {
+      const items = Array.from(menu.querySelectorAll('button'));
+      const i = items.indexOf(document.activeElement);
+      const n = items.length;
+      items[i < 0 ? (step > 0 ? 0 : n - 1) : (i + step + n) % n].focus();
+    };
+    wrap.addEventListener('keydown', (e) => {
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+      e.preventDefault();
+      setOpen(true);
+      focusItem(e.key === 'ArrowDown' ? 1 : -1);
+    });
     wrap.append(btn, menu);
     right.insertBefore(wrap, right.firstChild);
-    wrap.after(separator());
 
     // 搜索按钮（连同查找栏）移到右侧、MarkTeX 按钮之前
-    const find = document.getElementById('viewFindButton');
+    const find = $('viewFindButton');
     const findWrap = find && find.closest('.toolbarButtonWithContainer');
     if (findWrap) {
       findWrap.classList.add('marktex-find');
       right.insertBefore(findWrap, wrap);
     }
-    // 查找栏：第一行是输入框和结果数，第二行是各个选项
-    const opt1 = document.getElementById('findbarOptionsOneContainer');
-    const opt2 = document.getElementById('findbarOptionsTwoContainer');
+    // 查找栏：第一行是输入框、上一个 / 下一个和结果数，第二行是各个选项
+    const opt1 = $('findbarOptionsOneContainer');
+    const opt2 = $('findbarOptionsTwoContainer');
     if (opt1 && opt2) {
       const box = make('div', { id: 'marktexFindOptions' });
       opt1.before(box);
@@ -284,7 +326,7 @@
     app.initializedPromise.then(() => {
       layoutToolbar(app);
       buildToolbar();
-      buildSidebarTabs();
+      buildSidebarViews();
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
       // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式
       app.eventBus.on('outlineloaded', () => {

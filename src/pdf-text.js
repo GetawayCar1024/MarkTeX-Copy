@@ -13,6 +13,10 @@
   const BULLET_RE = /^([•●○◦▪▫■□‣⁃∙·▸►\-–—*∗])\s+(.*)$/;
   const BULLET_CHAR = /^[•●○◦▪▫■□‣⁃∙▸►–—∗*]$/;
   const MONO_FONT = /mono|consol|courier|menlo|monaco|lucida\s*console|lucidaconsole|sourcecode|inconsolata|firacode|fira\s*code|jetbrains|cascadia|sfmono/i;
+  // LaTeX picture 环境的绘图字体（画代码框的圆角、斜线），字形不是文字
+  const PICTURE_FONT = /(^|\+)L(CIRCLE|INE)W?10$/i;
+  // 没有 Unicode 映射的字形，PDF.js 给出的是控制字符
+  const CONTROL_ONLY = (s) => /[\u0000-\u0008\u000e-\u001f]/.test(s) && !/[^\s\u0000-\u001f]/.test(s);
   // 粗体：字体名含 Bold 等，或中文排版中常用来表示加粗的黑体
   const BOLD_FONT = /bold|heavy|black|semibold|demibold|simhei|heiti|黑体/i;
   const EMPHASIS_DOTS = /^[·・•﹅﹆]+$/;
@@ -494,6 +498,7 @@
       // 被裁剪掉、看不见的内容（macOS 打印时跨页的一行在上下两页各画一次）。同一行的文字、公式统一按正文字号判断；
       // 分数线在数学轴上，比基线高约 0.25em
       if (CCM.pdfClipped && !opts.noTables) arr = arr.filter((p) => p.bullet || !CCM.pdfClipped(page, p.rule ? p.y - 0.25 * bodyS : p.y, bodyS));
+      arr = arr.filter((p) => !PICTURE_FONT.test(p.font || '') && !CONTROL_ONLY(p.str));
       // 着重号（中文排版中字下的小圆点）是装饰，不是内容
       // 带着重号的文字按加粗处理（点在字的上方或下方，覆盖文字的大部分宽度）
       const isDot = (p) => !p.geo && !p.rule && !p.bullet && EMPHASIS_DOTS.test(p.str.trim()) && p.s < 0.8 * bodyS;
@@ -790,6 +795,27 @@
       if (/^\d{1,5}$/.test(f.str.trim()) && (!g || apart)) {
         line.lineNo = { n: +f.str.trim(), x0: f.x0, x1: f.x1, text: g ? codeOf(byX.slice(1)) : '', left: g ? g.x0 : null };
       }
+    } else if (solid.length > 1) {
+      // 正文字体排版的带行号代码 / 样例（如 LaTeX listings：行号为粗体，内容为 LMRoman）：行首的数字与内容字号相同、字体不同，
+      // 隔开一段距离，内容不是中文。先记下，是否真是行号在 promoteListings 中按连续的几行判断
+      const byX = [...solid].sort((a, b) => a.x0 - b.x0);
+      const [f, g] = byX;
+      if (/^\d{1,5}$/.test(f.str.trim()) && !f.mathFont && !f.geo && f.font && g.font && f.font !== g.font &&
+        g.x0 - f.x1 > 0.4 * s && Math.abs(f.s - g.s) < 0.08 * g.s) {
+        let txt = '';
+        let prevP = null;
+        for (const p of byX.slice(1)) {
+          if (prevP && p.x0 - prevP.x1 > 0.2 * s) txt += ' ';
+          txt += p.str;
+          prevP = p;
+        }
+        txt = txt.replace(/\s+/g, ' ').trim();
+        const cjk = (txt.match(new RegExp(CJK.source, 'g')) || []).length;
+        if (cjk < 0.3 * txt.replace(/\s/g, '').length) {
+          const pieces = byX.slice(1).map((p) => ({ str: p.str, x0: p.x0, x1: p.x1 }));
+          line.numbered = { n: +f.str.trim(), x0: f.x0, x1: f.x1, left: g.x0, font: f.font, contentFont: g.font, text: txt, pieces };
+        }
+      }
     }
 
     // 与公式相邻的数字、括号、运算符、函数名并入公式
@@ -995,7 +1021,95 @@
   const looksLikeMathLine = (s) => !CJK.test(s) && s.length <= 80 && (s.length <= 3 || MATH_LINE_CHARS.test(s)) &&
     !/[A-Za-z]{3,}\s+[A-Za-z]{3,}\s+[A-Za-z]{3,}/.test(s);
 
+  // 正文字体排版、带行号的代码或样例按代码块处理（复制时去掉行号，见 render）。连续几行行首的数字依次加一、
+  // 左端或右端对齐、样式相同（跨页继续的也算）：从 1 开始至少两行，或者至少三行；只有一行的（如一行的样例输出），
+  // 要求文档中已有同样样式的代码块
+  function promoteListings(lines) {
+    const style = (l) => `${l.numbered.font}|${l.numbered.contentFont}`;
+    const continues = (first, prev, l) => l.numbered.n === prev.numbered.n + 1 && style(l) === style(prev) &&
+      (Math.abs(l.numbered.x0 - first.numbered.x0) < 0.4 * l.s || Math.abs(l.numbered.x1 - first.numbered.x1) < 0.4 * l.s) &&
+      (l.page !== prev.page || (l.top > prev.top && l.top - prev.top < 3 * l.h));
+    const runs = [];
+    let run = [];
+    for (const l of lines) {
+      if (!l.numbered || l.mono) {
+        if (run.length) runs.push(run);
+        run = [];
+        continue;
+      }
+      if (run.length && !continues(run[0], run[run.length - 1], l)) {
+        runs.push(run);
+        run = [];
+      }
+      run.push(l);
+    }
+    if (run.length) runs.push(run);
+    // 等宽格子排版（listings 默认的 columns=fixed，每格 0.6em，字符居中）：窄字符（如“.”、数字）之间的空隙可能被 PDF.js
+    // 当成空格插入同一文本项中；真正的空格是一整个空格子，空隙超过 0.6em，PDF.js 会另起一项。按格子重建这样的行。
+    // 判断依据（满足其一）：各行首字的位置因字符宽窄相差零点几 em（自然排版时各行从同一位置开始）；
+    // 相邻两项之间恰好隔着整数个格子（自然排版时一句话在同一项中，空格不会让 PDF.js 另起一项）
+    const isFixed = (r, cell) => {
+      const lefts = r.map((l) => l.numbered.left);
+      const near = lefts.filter((x) => x - Math.min(...lefts) < cell);
+      if (near.length >= 2 && Math.max(...near) - Math.min(...near) > 0.2 * cell) return true;
+      // 一长串数字：TeX 字体中数字宽 0.5em，排在格子中时每个数字占 0.6em
+      for (const l of r) {
+        for (const p of l.numbered.pieces) {
+          const digits = p.str.replace(/\s+/g, '');
+          if (/^\d{4,}$/.test(digits) && (p.x1 - p.x0) / digits.length > (0.56 / 0.6) * cell) return true;
+        }
+      }
+      let good = 0;
+      let total = 0;
+      for (const l of r) {
+        const ps = l.numbered.pieces.filter((p) => p.str.trim());
+        for (let i = 1; i < ps.length; i++) {
+          if (ps[i].x0 - ps[i - 1].x1 <= 0.3 * cell) continue;
+          const k = (ps[i].x0 - ps[i - 1].x0) / cell - ps[i - 1].str.replace(/\s+/g, '').length;
+          total++;
+          if (k > 0.5 && Math.abs(k - Math.round(k)) < 0.25) good++;
+        }
+      }
+      return total >= 2 && good >= 0.75 * total;
+    };
+    const fixedText = (pieces, cell) => {
+      let txt = '';
+      let prev = null;
+      for (const p of pieces) {
+        const str = p.str.replace(/\s+/g, '');
+        if (!str) continue;
+        if (prev && p.x0 - prev.x1 > 0.3 * cell) txt += ' '.repeat(Math.max(1, Math.round((p.x0 - prev.x0) / cell) - prev.n));
+        txt += str;
+        prev = { x0: p.x0, x1: p.x1, n: str.length };
+      }
+      return txt;
+    };
+    const promote = (r, fixed) => {
+      for (const l of r) {
+        const nb = l.numbered;
+        // 排版时把数据中的“-”变成了减号 U+2212，复制出来的样例要能直接使用
+        const text = (fixed ? fixedText(nb.pieces, 0.6 * l.s) : nb.text).replace(/\u2212/g, '-');
+        Object.assign(l, { mono: true, prop: true, charW: 0.6 * l.s, codeText: `${nb.n} ${text}` });
+        l.lineNo = { n: nb.n, x0: nb.x0, x1: nb.x1, text, left: nb.left };
+      }
+    };
+    const accepted = [];
+    const styles = new Set();
+    const single = [];
+    for (const r of runs) {
+      if ((r.length >= 2 && r[0].numbered.n === 1) || r.length >= 3) {
+        accepted.push(r);
+        styles.add(style(r[0]));
+      } else single.push(r);
+    }
+    for (const r of single) if (r[0].numbered.n === 1 && styles.has(style(r[0]))) accepted.push(r);
+    // 同一样式的代码块排版方式相同：其中一块能判断出是等宽格子，其他块也按格子处理
+    const fixedStyles = new Set(accepted.filter((r) => isFixed(r, 0.6 * r[0].s)).map((r) => style(r[0])));
+    for (const r of accepted) promote(r, fixedStyles.has(style(r[0])));
+  }
+
   function buildBlocks(lines) {
+    promoteListings(lines);
     const bodyH = bodyHeight(lines);
     const gaps = [];
     for (let i = 1; i < lines.length; i++) {
@@ -1259,12 +1373,14 @@
         const steps = [];
         for (let i = 1; i < b.lines.length; i++) if (b.lines[i].page === b.lines[i - 1].page) steps.push(b.lines[i].top - b.lines[i - 1].top);
         const step = median(steps.filter((x) => x > 0)) || 0;
+        // 正文字体排版的代码（promoteListings）：字符居中排在等宽的格子里，各行首字的位置相差不到一格，不算缩进
+        const slack = b.lines.some((l) => l.prop) ? 0.35 : 0;
         const out = [];
         b.lines.forEach((l, i) => {
           const p = b.lines[i - 1];
           if (p && step && p.page === l.page && l.top - p.top > step * 1.6) out.push('');
           const x = leftOf(l);
-          out.push(x == null ? '' : ' '.repeat(Math.max(0, Math.round((x - base) / cw))) + textOf(l));
+          out.push(x == null ? '' : ' '.repeat(Math.max(0, Math.round((x - base) / cw - slack))) + textOf(l));
         });
         const body = out.join('\n');
         const fence = /```/.test(body) ? '````' : '```';

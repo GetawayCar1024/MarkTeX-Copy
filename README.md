@@ -41,10 +41,10 @@ Chrome / Edge 扩展：把网页和 PDF 的选中内容复制为 **Markdown** �
 浏览器自带的 PDF 阅读器不允许扩展读取选区，因此扩展内置了 [PDF.js](https://github.com/mozilla/pdf.js) 阅读器：
 
 - 默认仍用浏览器自带阅读器；在其中复制时会提示切换到 MarkTeX 阅读器，不会复制原文
-- 阅读器的布局与 Chrome 自带阅读器一致，跟随系统浅色 / 深色
+- 阅读器与扩展弹窗同一风格，跟随系统浅色 / 深色；侧栏可在页面缩略图、文档大纲等之间切换
 - 复制时重建段落、标题、嵌套列表、粗体、代码块、有边框的表格和图片（图片可单独选中，以内嵌图片复制），并把公式还原为 LaTeX（上下标、求和上下限、分式、根号、多行公式）。公式由排版推断，请核对
 - Typora 等用 MathJax 导出的 PDF（公式是矢量图形，Windows 与 macOS 导出的都支持）也能识别出公式；大纲标题中的 TeX 会显示为公式
-- 代码块左侧的行号不会被复制；跨页的表格合并为一个；页眉页脚和跨页时被遮住的重复内容会去掉
+- 代码块和样例左侧的行号不会被复制（包括 LaTeX listings 排版的样例）；跨页的表格合并为一个；页眉页脚和跨页时被遮住的重复内容会去掉
 - `Ctrl+A` 只选中 PDF 内容，并读取全部页面，无需先滚动到底
 
 ## 其他
@@ -56,4 +56,4 @@ Chrome / Edge 扩展：把网页和 PDF 的选中内容复制为 **Markdown** �
 
 ## License
 
-MIT。内置的 PDF.js 遵循 Apache License 2.0；`src/mathjax-glyphs.js` 与图标中的 x 来自 MathJax（Apache License 2.0）的字库。
+MIT。内置的 PDF.js 遵循 Apache License 2.0；`src/mathjax-glyphs.js` 与图标中的 x² 来自 MathJax（Apache License 2.0）的字库。

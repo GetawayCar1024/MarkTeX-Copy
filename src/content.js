@@ -91,7 +91,7 @@
     frame.src = chrome.runtime.getURL(VIEWER) + '?embed=1' + (hash ? '#' + hash : '');
     frame.allow = 'clipboard-read; clipboard-write; fullscreen';
     // 底色与阅读器背景一致，避免加载时闪烁
-    const bg = matchMedia('(prefers-color-scheme: dark)').matches ? '#282828' : '#e8eaed';
+    const bg = matchMedia('(prefers-color-scheme: dark)').matches ? '#1c1c1e' : '#e5e5ea';
     frame.style.cssText = `position:fixed;inset:0;width:100vw;height:100vh;border:0;margin:0;z-index:2147483646;background:${bg};`;
     const onMessage = (e) => {
       if (e.source !== frame.contentWindow || !e.data) return;
