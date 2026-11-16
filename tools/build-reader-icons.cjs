@@ -3,7 +3,7 @@
 // 用法：node tools/build-reader-icons.cjs
 const fs = require('fs');
 const path = require('path');
-const { X_PATH, TWO_PATH, TWO_SCALE, TWO_SHIFT, GLYPH_BOX } = require('./build-icons.cjs');
+const { mark } = require('./build-icons.cjs');
 
 const S = (body) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>\n`;
 // 实心图标（24×24），与扩展弹窗中各行的图标相同
@@ -11,21 +11,18 @@ const F = (d) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><p
 const dot = (x, y, r = 1.25) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#000" stroke="none"/>`;
 const page = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.8"/>`;
 
-// MarkTeX 按钮：与扩展图标相同的“选中的 x²”。选区用半透明，在单色图标中显示为浅色
+// MarkTeX 按钮：与扩展图标相同的 Markdown 徽章，M↓ 镂空（单色图标中显示为按钮的底色）
 function logo() {
-  const n = (v) => +v.toFixed(4);
-  const [x0, y0, x1, y1] = GLYPH_BOX;
-  const k = 9.4 / (x1 - x0);
-  const ox = 10 - ((x0 + x1) / 2) * k;
-  const oy = 9.7 - ((y0 + y1) / 2) * k;
-  const k2 = k * TWO_SCALE;
-  return '<g fill="#000" stroke="none">' +
-    '<rect x="3.4" y="4.6" width="13.2" height="10.8" fill-opacity="0.3"/>' +
-    '<rect x="2.2" y="4" width="1.3" height="11.4"/><circle cx="2.85" cy="3.4" r="1.65"/>' +
-    '<rect x="16.5" y="4.6" width="1.3" height="11.4"/><circle cx="17.15" cy="16.6" r="1.65"/>' +
-    `<path transform="matrix(${n(k)} 0 0 ${-n(k)} ${n(ox)} ${n(oy)})" d="${X_PATH}"/>` +
-    `<path transform="matrix(${n(k2)} 0 0 ${-n(k2)} ${n(ox + TWO_SHIFT[0] * k)} ${n(oy - TWO_SHIFT[1] * k)})" d="${TWO_PATH}"/>` +
-    '</g>';
+  const { badge: b, m, arrow } = mark();
+  const s = 18 / 128; // 徽章宽 18，居中
+  const ox = 1;
+  const oy = 10 - ((b.y0 + b.y1) / 2) * s;
+  const n = (v) => +v.toFixed(3);
+  const [x0, y0, x1, y1, r] = [ox + b.x0 * s, oy + b.y0 * s, ox + b.x1 * s, oy + b.y1 * s, b.r * s].map(n);
+  const arc = (x, y) => `A${r} ${r} 0 0 1 ${n(x)} ${n(y)}`;
+  const badge = `M${n(x0 + r)} ${y0}H${n(x1 - r)}${arc(x1, y0 + r)}V${n(y1 - r)}${arc(x1 - r, y1)}H${n(x0 + r)}${arc(x0, y1 - r)}V${n(y0 + r)}${arc(x0 + r, y0)}Z`;
+  const poly = (p) => 'M' + p.map(([x, y]) => `${n(ox + x * s)} ${n(oy + y * s)}`).join('L') + 'Z';
+  return `<path fill="#000" stroke="none" fill-rule="evenodd" d="${badge}${poly(m)}${poly(arrow)}"/>`;
 }
 
 const ICONS = {

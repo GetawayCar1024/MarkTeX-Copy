@@ -1508,14 +1508,22 @@
     return false;
   };
 
-  // 内嵌图片的数据控制在约 100 KB 以内：过长的 data URL 在 Typora 等编辑器中无法显示。先降低画质，再缩小尺寸
-  const MAX_DATA_URL = 100 * 1024;
-  function compact(canvas) {
+  // 内嵌图片的数据大小上限（设置中的“图片大小上限”，默认 100 KB；不限制时为 0）：过长的 data URL 在 Typora 等编辑器中无法显示
+  const imageLimit = (settings) => {
+    const s = settings || CCM.DEFAULTS || {};
+    if (s.imageLimit === false) return 0;
+    const kb = Math.round(+s.imageMaxKB);
+    return (Number.isFinite(kb) && kb >= 10 ? kb : 100) * 1024;
+  };
+  // 不限制时为无损的 PNG；限制时先试 PNG，超出再降低 JPEG 画质，最后缩小尺寸
+  function compact(canvas, limit) {
+    const png = canvas.toDataURL('image/png');
+    if (!limit || png.length <= limit) return png;
     let src = canvas;
-    for (let round = 0; round < 6; round++) {
+    for (let round = 0; round < 8; round++) {
       for (const q of [0.88, 0.78, 0.68]) {
         const url = src.toDataURL('image/jpeg', q);
-        if (url.length <= MAX_DATA_URL) return url;
+        if (url.length <= limit) return url;
       }
       const next = document.createElement('canvas');
       next.width = Math.max(1, Math.round(src.width * 0.8));
@@ -1528,8 +1536,9 @@
     return src.toDataURL('image/jpeg', 0.68);
   }
 
-  // 图片：把页面渲染到画布上再裁出图片区域（与阅读器中看到的一致，也不依赖图片的编码格式）
-  async function imageSources(lines) {
+  // 图片：把页面渲染到画布上再裁出图片区域（与阅读器中看到的一致，也不依赖图片的编码格式）。
+  // 结果按大小上限缓存在图片对象上，修改设置后重新生成
+  async function imageSources(lines, limit) {
     const app = globalThis.PDFViewerApplication;
     const renders = new Map();
     const renderPage = (n) => {
@@ -1549,7 +1558,8 @@
     };
     for (const l of lines) {
       if (!l.image) continue;
-      if (l.image.src) { l.src = l.image.src; continue; }
+      const cache = (l.image.srcs = l.image.srcs || {});
+      if (cache[limit]) { l.src = cache[limit]; continue; }
       try {
         const { canvas, viewport } = await renderPage(l.page);
         const [a, b] = viewport.convertToViewportPoint(l.image.x0, l.image.y0);
@@ -1566,7 +1576,7 @@
         octx.fillStyle = '#fff';
         octx.fillRect(0, 0, w, h);
         octx.drawImage(canvas, x, y, w, h, 0, 0, w, h);
-        l.src = l.image.src = compact(out);
+        l.src = cache[limit] = compact(out, limit);
       } catch (e) {
         console.warn('[marktex-copy] image export failed', e);
       }
@@ -1633,7 +1643,7 @@
     for (let n = from; n <= to; n++) if (all || (n !== from && n !== to)) fullPages.add(n);
     const lines = richLines(pieces, { fullPages });
     if (!lines.length) return null;
-    await imageSources(lines);
+    await imageSources(lines, imageLimit(settings));
     const out = render(buildBlocks(dropRunningHeaders(lines)), settings);
     out.rebuilt = true;
     out.hasMath = false;

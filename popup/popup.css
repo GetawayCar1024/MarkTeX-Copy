@@ -216,6 +216,31 @@ label.row { cursor: pointer; }
 .switch:checked::after { transform: translateX(18px); }
 .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
+/* ---------- 数值输入（图片大小上限） ---------- */
+.num-field { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.num {
+  width: 84px;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--fill);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.num::-webkit-inner-spin-button, .num::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.num:focus { box-shadow: inset 0 0 0 1.5px var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--card)); }
+.unit { color: var(--secondary); font-size: 13px; }
+/* 依赖的开关关闭时变灰 */
+.row.disabled > * { opacity: 0.4; }
+.row.disabled { cursor: default; }
+
 /* ---------- 快捷键 ---------- */
 .keys { display: inline-flex; align-items: center; gap: 6px; }
 .key {

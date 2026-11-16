@@ -61,8 +61,32 @@ function bindSettings() {
     });
   }
   for (const input of $$('input.switch')) {
-    input.checked = !!settings[input.name];
-    input.addEventListener('change', () => save({ [input.name]: input.checked }));
+    input.addEventListener('change', () => {
+      save({ [input.name]: input.checked });
+      renderInputs();
+    });
+  }
+  // 数值：超出范围或不是数字时恢复默认值
+  for (const input of $$('input.num')) {
+    input.addEventListener('change', () => {
+      const v = Math.round(+input.value);
+      const ok = input.value !== '' && Number.isFinite(v) && v >= +input.min && v <= +input.max;
+      save({ [input.name]: ok ? v : CCM.DEFAULTS[input.name] });
+      renderInputs();
+    });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') input.blur(); });
+  }
+  renderInputs();
+}
+
+function renderInputs() {
+  for (const input of $$('input.switch')) input.checked = !!settings[input.name];
+  for (const input of $$('input.num')) if (document.activeElement !== input) input.value = settings[input.name];
+  // 依赖某个开关的设置项：开关关闭时变灰、不可编辑
+  for (const row of $$('[data-depends]')) {
+    const on = !!settings[row.dataset.depends];
+    row.classList.toggle('disabled', !on);
+    for (const el of row.querySelectorAll('input')) el.disabled = !on;
   }
 }
 
@@ -264,6 +288,7 @@ async function detectPdf() {
     if (area !== 'sync') return;
     for (const k of Object.keys(changes)) settings[k] = changes[k].newValue;
     renderSegments();
+    renderInputs();
     renderShortcuts();
     if (changes.language) applyI18n();
   });

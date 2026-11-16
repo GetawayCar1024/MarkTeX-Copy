@@ -1,296 +1,57 @@
-// 生成扩展图标：icons/icon{16,32,48,64,128,192,512}.png 与矢量原稿 icons/icon.svg。
-// 图案：iOS 风格的白色圆角方块上，一段被选中的 x²（浅蓝选区，两端是蓝色的选择手柄），表示“选中公式并复制”。
-// x² 是 TeX（Computer Modern）的粗斜体 x 与粗体 2，轮廓取自 MathJax 字库（Apache License 2.0）。
-// 16 / 32px 按像素网格单独排布。不依赖第三方库：路径展平后做扫描线填充（超采样抗锯齿），PNG 用 Node 自带的 zlib 编码。
+// 生成扩展图标：icons/icon{16,20,24,32,48,64,128,192,512}.png 与矢量原稿 icons/icon.svg。
+// 图案：Markdown 标志（M↓，Dustin Curtis，CC0）作为蓝色实心徽章。所有尺寸都由同一份 128 格的设计稿缩放，
+// 工具栏中的小图标与大图标完全一致；20 / 24px 供屏幕缩放 125% / 150% 时直接使用，不必由 32px 缩小。
 // 用法：node tools/build-icons.cjs
 const fs = require('fs');
 const path = require('path');
-const zlib = require('zlib');
+const { roundRect, rasterize, png } = require('./icon-lib.cjs');
 
-const BLUE = '#007aff';
-const INK = '#1c1c1e';
-const TILE = ['#ffffff', '#e5e5ea']; // 自上而下的渐变
+// 设计稿（128 格）：徽章上下边在 16px 时恰好落在整像素上（y = 3 与 13）
+const BADGE = { x0: 0, y0: 24, x1: 128, y1: 104, r: 16, top: '#47a3ff', bottom: '#0a6cff' };
+const GLYPH = { cx: 64, cy: 64, w: 96, color: '#ffffff' };
+// Markdown 标志原稿（208 × 128）中的 M 与箭头
+const MARK_M = [[30, 98], [30, 30], [50, 30], [70, 55], [90, 30], [110, 30], [110, 98], [90, 98], [90, 59], [70, 84], [50, 59], [50, 98]];
+const MARK_ARROW = [[155, 98], [125, 65], [145, 65], [145, 30], [165, 30], [165, 65], [185, 65]];
 
-// MathJax TeX 字库中的粗斜体 x（U+1D499）与粗体 2（U+1D7D0），单位 1/1000 em，y 轴向上
-const X_PATH = 'M74 282H63Q43 282 43 296Q43 298 45 307T56 332T76 365T110 401T159 433Q200 451 233 451H236Q273 451 282 450Q358 437 382 400L392 410Q434 452 483 452Q538 452 568 421T599 346Q599 303 573 280T517 256Q494 256 478 270T462 308Q462 343 488 367Q501 377 520 385Q520 386 516 389T502 396T480 400T462 398Q429 383 415 341Q354 116 354 80T405 44Q449 44 485 74T535 142Q539 156 542 159T562 162H568H579Q599 162 599 148Q599 135 586 111T550 60T485 12T397 -8Q313 -8 266 35L258 44Q215 -7 161 -7H156Q99 -7 71 25T43 95Q43 143 70 165T125 188Q148 188 164 174T180 136Q180 101 154 77Q141 67 122 59Q124 54 136 49T161 43Q183 43 200 61T226 103Q287 328 287 364T236 400Q200 400 164 377T107 302Q103 288 100 285T80 282H74Z';
-const TWO_PATH = 'M175 580Q175 578 185 572T205 551T215 510Q215 467 191 449T137 430Q107 430 83 448T58 511Q58 558 91 592T168 640T259 654Q328 654 383 637Q451 610 484 563T517 459Q517 401 482 360T368 262Q340 243 265 184L210 140H274Q416 140 429 145Q439 148 447 186T455 237H517V233Q516 230 501 119Q489 9 486 4V0H57V25Q57 51 58 54Q60 57 109 106T215 214T288 291Q364 377 364 458Q364 515 328 553T231 592Q214 592 201 589T181 584T175 580Z';
-// 上标 2：0.7 倍大小，基线抬高 0.4em
-const TWO_SCALE = 0.7;
-const TWO_SHIFT = [630, 400];
-
-// ---------- 排布 ----------
-// tile：圆角方块外框；ring：内描边宽度与不透明度（白底在浅色工具栏上仍有边界）；sel：选区；
-// bars：手柄竖线；knobs：手柄圆点 [cx, cy, r]；glyph：x² 外框的中心与宽度。坐标都是输出像素。
-// 选区与文字的行高一致：上方紧贴上标，基线下留出降部的空间
-const SMALL = {
-  // 16px 上 x² 的轮廓糊成一团：只画一个 x，用对齐像素、略向右倾的两笔斜线
-  16: {
-    tile: [0, 0, 16, 16], ring: [1, 0.12],
-    sel: [4, 5, 12, 12], bars: [[3, 4.5, 4, 12], [12, 5, 13, 12.5]], knobs: [[3.5, 3.5, 1.8], [12.5, 12.5, 1.8]],
-    glyph: { weight: 1.35, strokes: [[[6, 6.5], [10, 11.5]], [[11, 6.5], [5, 11.5]]] },
-  },
-  32: {
-    tile: [1, 1, 31, 31], ring: [1, 0.1],
-    sel: [8, 10, 24, 22], bars: [[6, 9, 8, 22], [24, 10, 26, 23]], knobs: [[7, 8, 2.5], [25, 24, 2.5]],
-    glyph: { cx: 16, cy: 15.4, w: 11 },
-  },
-};
-// 其他尺寸由 128 × 128 的原稿缩放，四周留约 4% 的透明边
-function layout(size, pad = Math.round(size * 0.04)) {
-  if (SMALL[size]) return SMALL[size];
-  const s = (size - 2 * pad) / 128;
-  const P = (v) => pad + v * s;
-  return {
-    tile: [P(0), P(0), P(128), P(128)], ring: [1.5 * s, 0.08],
-    sel: [P(28), P(38), P(100), P(90)], bars: [[P(25), P(38), P(29), P(90)], [P(99), P(38), P(103), P(90)]],
-    knobs: [[P(27), P(33), 6.5 * s], [P(101), P(95), 6.5 * s]],
-    glyph: { cx: P(64), cy: P(61.5), w: 44 * s },
-  };
+// 设计稿中的徽章与 M↓（128 格坐标）
+function mark() {
+  const k = GLYPH.w / (185 - 30);
+  const ox = GLYPH.cx - ((30 + 185) / 2) * k;
+  const oy = GLYPH.cy - ((30 + 98) / 2) * k;
+  const at = (list) => list.map(([x, y]) => [ox + x * k, oy + y * k]);
+  return { badge: BADGE, m: at(MARK_M), arrow: at(MARK_ARROW) };
 }
 
-// ---------- 几何 ----------
-// SVG 路径（仅绝对坐标命令）→ 多边形，曲线按固定段数展平
-function flatten(d) {
-  const tokens = d.match(/[MLHVQTCSZ]|-?\d*\.?\d+(?:e-?\d+)?/gi);
-  const polys = [];
-  let poly = null;
-  let cmd = '';
-  let x = 0;
-  let y = 0;
-  let cx = 0; // 上一个控制点（用于 T / S）
-  let cy = 0;
-  let i = 0;
-  const num = () => parseFloat(tokens[i++]);
-  const quad = (x1, y1, x2, y2) => {
-    for (let t = 1; t <= 12; t++) {
-      const s = t / 12;
-      poly.push([(1 - s) * (1 - s) * x + 2 * (1 - s) * s * x1 + s * s * x2, (1 - s) * (1 - s) * y + 2 * (1 - s) * s * y1 + s * s * y2]);
-    }
-    cx = x1; cy = y1; x = x2; y = y2;
-  };
-  const cubic = (x1, y1, x2, y2, x3, y3) => {
-    for (let t = 1; t <= 16; t++) {
-      const s = t / 16;
-      const a = (1 - s) ** 3;
-      const b = 3 * (1 - s) ** 2 * s;
-      const c = 3 * (1 - s) * s * s;
-      const e = s ** 3;
-      poly.push([a * x + b * x1 + c * x2 + e * x3, a * y + b * y1 + c * y2 + e * y3]);
-    }
-    cx = x2; cy = y2; x = x3; y = y3;
-  };
-  while (i < tokens.length) {
-    if (/^[A-Za-z]$/.test(tokens[i])) cmd = tokens[i++];
-    const C = cmd.toUpperCase();
-    if (C === 'M') { x = num(); y = num(); poly = [[x, y]]; polys.push(poly); cx = x; cy = y; cmd = 'L'; }
-    else if (C === 'L') { x = num(); y = num(); poly.push([x, y]); cx = x; cy = y; }
-    else if (C === 'H') { x = num(); poly.push([x, y]); cx = x; cy = y; }
-    else if (C === 'V') { y = num(); poly.push([x, y]); cx = x; cy = y; }
-    else if (C === 'Q') { const a = num(); const b = num(); quad(a, b, num(), num()); }
-    else if (C === 'T') { quad(2 * x - cx, 2 * y - cy, num(), num()); }
-    else if (C === 'C') { const a = num(); const b = num(); const c = num(); const e = num(); cubic(a, b, c, e, num(), num()); }
-    else if (C === 'S') { const c = num(); const e = num(); cubic(2 * x - cx, 2 * y - cy, c, e, num(), num()); }
-    else if (C === 'Z') { cmd = ''; }
-    else i++;
-  }
-  return polys.filter((p) => p.length > 2);
-}
-
-// Apple 图标的连续曲率圆角：用指数为 5 的超椭圆近似
-function squircle(x0, y0, x1, y1, steps = 256) {
-  const cx = (x0 + x1) / 2;
-  const cy = (y0 + y1) / 2;
-  const a = (x1 - x0) / 2;
-  const b = (y1 - y0) / 2;
-  const pts = [];
-  for (let k = 0; k < steps; k++) {
-    const t = (k / steps) * 2 * Math.PI;
-    const c = Math.cos(t);
-    const s = Math.sin(t);
-    pts.push([cx + a * Math.sign(c) * Math.abs(c) ** 0.4, cy + b * Math.sign(s) * Math.abs(s) ** 0.4]);
-  }
-  return pts;
-}
-const rect = (x0, y0, x1, y1) => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
-// 线段（平头），宽 w
-function segment([x0, y0], [x1, y1], w) {
-  const l = Math.hypot(x1 - x0, y1 - y0);
-  const nx = ((y0 - y1) / l) * (w / 2);
-  const ny = ((x1 - x0) / l) * (w / 2);
-  return [[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]];
-}
-const circle = (cx, cy, r, steps = 64) => Array.from({ length: steps }, (_, k) => [cx + r * Math.cos((k / steps) * 2 * Math.PI), cy + r * Math.sin((k / steps) * 2 * Math.PI)]);
-
-// x²（字体单位，y 轴向下）及其外框
-const GLYPH = (() => {
-  const x = flatten(X_PATH).map((p) => p.map(([px, py]) => [px, -py]));
-  const two = flatten(TWO_PATH).map((p) => p.map(([px, py]) => [TWO_SCALE * px + TWO_SHIFT[0], -(TWO_SCALE * py + TWO_SHIFT[1])]));
-  const polys = [...x, ...two];
-  const xs = polys.flat().map((p) => p[0]);
-  const ys = polys.flat().map((p) => p[1]);
-  return { polys, box: [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)] };
-})();
-// 把 x² 放到给定中心、给定宽度：返回缩放 k 与平移 (ox, oy)
-function fitGlyph({ cx, cy, w }) {
-  const [x0, y0, x1, y1] = GLYPH.box;
-  const k = w / (x1 - x0);
-  return { k, ox: cx - ((x0 + x1) / 2) * k, oy: cy - ((y0 + y1) / 2) * k };
-}
-
-function layers(L) {
-  const [x0, y0, x1, y1] = L.tile;
-  const tile = squircle(x0, y0, x1, y1);
-  const [rw, ra] = L.ring;
-  const inner = squircle(x0 + rw, y0 + rw, x1 - rw, y1 - rw).reverse(); // 反向即为挖空
-  let ink;
-  if (L.glyph.strokes) ink = L.glyph.strokes.map(([a, b]) => segment(a, b, L.glyph.weight));
-  else {
-    const { k, ox, oy } = fitGlyph(L.glyph);
-    ink = GLYPH.polys.map((p) => p.map(([x, y]) => [ox + x * k, oy + y * k]));
-  }
+// 输出像素：32px 及以下铺满，更大的四周留约 4% 的透明边
+function layers(size) {
+  const pad = size <= 32 ? 0 : Math.round(size * 0.04);
+  const u = (size - 2 * pad) / 128;
+  const P = (v) => pad + v * u;
+  const { badge: b, m, arrow } = mark();
+  const map = (list) => list.map(([x, y]) => [P(x), P(y)]);
   return [
-    { fill: { y0, y1, stops: TILE }, polys: [tile] },
-    { fill: '#000000', alpha: ra, polys: [tile, inner] },
-    { fill: BLUE, alpha: 0.2, polys: [rect(...L.sel)] },
-    { fill: INK, polys: ink },
-    { fill: BLUE, polys: [...L.bars.map((b) => rect(...b)), ...L.knobs.map(([cx, cy, r]) => circle(cx, cy, r))] },
+    { fill: { from: [0, P(b.y0)], to: [0, P(b.y1)], stops: [b.top, b.bottom] }, polys: [roundRect(P(b.x0), P(b.y0), P(b.x1), P(b.y1), b.r * u)] },
+    { fill: GLYPH.color, polys: [map(m), map(arrow)] },
   ];
 }
 
-// ---------- 光栅化 ----------
-// 非零环绕规则填充；ss × ss 超采样，返回每个像素的覆盖率
-function coverage(polys, size, ss) {
-  const W = size * ss;
-  const edges = [];
-  for (const poly of polys) {
-    for (let k = 0; k < poly.length; k++) {
-      const [x0, y0] = poly[k].map((v) => v * ss);
-      const [x1, y1] = poly[(k + 1) % poly.length].map((v) => v * ss);
-      if (y0 === y1) continue;
-      if (y0 < y1) edges.push({ ya: y0, yb: y1, x: x0, dx: (x1 - x0) / (y1 - y0), w: 1 });
-      else edges.push({ ya: y1, yb: y0, x: x1, dx: (x0 - x1) / (y0 - y1), w: -1 });
-    }
-  }
-  const acc = new Float32Array(size * size);
-  for (let row = 0; row < W; row++) {
-    const c = row + 0.5;
-    const xs = [];
-    for (const e of edges) if (c >= e.ya && c < e.yb) xs.push([e.x + (c - e.ya) * e.dx, e.w]);
-    xs.sort((a, b) => a[0] - b[0]);
-    let wind = 0;
-    const py = Math.floor(row / ss);
-    for (let k = 0; k < xs.length - 1; k++) {
-      wind += xs[k][1];
-      if (!wind) continue;
-      const a = Math.max(0, Math.ceil(xs[k][0] - 0.5));
-      const b = Math.min(W, Math.ceil(xs[k + 1][0] - 0.5));
-      for (let x = a; x < b; x++) acc[py * size + Math.floor(x / ss)] += 1;
-    }
-  }
-  const n = ss * ss;
-  for (let k = 0; k < acc.length; k++) acc[k] = Math.min(1, acc[k] / n);
-  return acc;
-}
-
-const rgb = (hex) => [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16) / 255);
-
-function render(size) {
-  const ss = size <= 64 ? 16 : 6;
-  const px = new Float32Array(size * size * 4); // 预乘 alpha
-  for (const layer of layers(layout(size))) {
-    const cov = coverage(layer.polys, size, ss);
-    const alpha = layer.alpha ?? 1;
-    const solid = typeof layer.fill === 'string' ? rgb(layer.fill) : null;
-    const g = solid ? null : { ...layer.fill, a: rgb(layer.fill.stops[0]), b: rgb(layer.fill.stops[1]) };
-    for (let k = 0; k < cov.length; k++) {
-      const a = cov[k] * alpha;
-      if (!a) continue;
-      let color = solid;
-      if (!color) {
-        const t = Math.min(1, Math.max(0, (Math.floor(k / size) + 0.5 - g.y0) / (g.y1 - g.y0)));
-        color = g.a.map((v, c) => v + (g.b[c] - v) * t);
-      }
-      const o = k * 4;
-      for (let c = 0; c < 3; c++) px[o + c] = color[c] * a + px[o + c] * (1 - a);
-      px[o + 3] = a + px[o + 3] * (1 - a);
-    }
-  }
-  const out = Buffer.alloc(size * size * 4);
-  for (let k = 0; k < size * size; k++) {
-    const a = px[k * 4 + 3];
-    for (let c = 0; c < 3; c++) out[k * 4 + c] = a ? Math.round((px[k * 4 + c] / a) * 255) : 0;
-    out[k * 4 + 3] = Math.round(a * 255);
-  }
-  return out;
-}
-
-// ---------- PNG ----------
-const CRC = new Uint32Array(256).map((_, n) => {
-  let c = n;
-  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  return c >>> 0;
-});
-const crc32 = (buf) => {
-  let c = 0xffffffff;
-  for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
-};
-function png(size, rgba) {
-  const chunk = (type, data) => {
-    const len = Buffer.alloc(4);
-    len.writeUInt32BE(data.length);
-    const td = Buffer.concat([Buffer.from(type), data]);
-    const crc = Buffer.alloc(4);
-    crc.writeUInt32BE(crc32(td));
-    return Buffer.concat([len, td, crc]);
-  };
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8; // 位深
-  ihdr[9] = 6; // RGBA
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  for (let y = 0; y < size; y++) rgba.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
-  return Buffer.concat([
-    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    chunk('IHDR', ihdr),
-    chunk('IDAT', zlib.deflateSync(raw, { level: 9 })),
-    chunk('IEND', Buffer.alloc(0)),
-  ]);
-}
-
-// ---------- 矢量原稿（128 × 128，不留边） ----------
+// 矢量原稿（128 × 128，不留边）
 function svg() {
-  const L = layout(128, 0);
+  const { badge: b, m, arrow } = mark();
   const n = (v) => +v.toFixed(2);
-  const m = (v) => +v.toFixed(5);
   const poly = (p) => 'M' + p.map(([x, y]) => `${n(x)} ${n(y)}`).join('L') + 'Z';
-  const [x0, y0, x1, y1] = L.tile;
-  const tile = poly(squircle(x0, y0, x1, y1, 128));
-  const inner = poly(squircle(x0 + L.ring[0], y0 + L.ring[0], x1 - L.ring[0], y1 - L.ring[0], 128).reverse());
-  const { k, ox, oy } = fitGlyph(L.glyph);
-  const k2 = k * TWO_SCALE;
-  const [sx0, sy0, sx1, sy1] = L.sel;
   return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n' +
-    `  <defs><linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${TILE[0]}"/><stop offset="1" stop-color="${TILE[1]}"/></linearGradient></defs>\n` +
-    `  <path d="${tile}" fill="url(#tile)"/>\n` +
-    `  <path d="${tile}${inner}" fill="#000" fill-opacity="${L.ring[1]}"/>\n` +
-    `  <rect x="${sx0}" y="${sy0}" width="${sx1 - sx0}" height="${sy1 - sy0}" fill="${BLUE}" fill-opacity="0.2"/>\n` +
-    `  <g fill="${INK}">\n` +
-    `    <path transform="matrix(${m(k)} 0 0 ${-m(k)} ${n(ox)} ${n(oy)})" d="${X_PATH}"/>\n` +
-    `    <path transform="matrix(${m(k2)} 0 0 ${-m(k2)} ${n(ox + TWO_SHIFT[0] * k)} ${n(oy - TWO_SHIFT[1] * k)})" d="${TWO_PATH}"/>\n` +
-    '  </g>\n' +
-    `  <g fill="${BLUE}">\n` +
-    L.bars.map(([a, b, c, d]) => `    <rect x="${n(a)}" y="${n(b)}" width="${n(c - a)}" height="${n(d - b)}"/>\n`).join('') +
-    L.knobs.map(([cx, cy, r]) => `    <circle cx="${n(cx)}" cy="${n(cy)}" r="${n(r)}"/>\n`).join('') +
-    '  </g>\n</svg>\n';
+    `  <defs><linearGradient id="badge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${b.top}"/><stop offset="1" stop-color="${b.bottom}"/></linearGradient></defs>\n` +
+    `  <rect x="${b.x0}" y="${b.y0}" width="${b.x1 - b.x0}" height="${b.y1 - b.y0}" rx="${b.r}" fill="url(#badge)"/>\n` +
+    `  <path d="${poly(m)}${poly(arrow)}" fill="${GLYPH.color}"/>\n` +
+    '</svg>\n';
 }
 
-const SIZES = [16, 32, 48, 64, 128, 192, 512];
+const SIZES = [16, 20, 24, 32, 48, 64, 128, 192, 512];
 if (require.main === module) {
   const dir = path.join(__dirname, '..', 'icons');
   fs.writeFileSync(path.join(dir, 'icon.svg'), svg());
-  for (const size of SIZES) fs.writeFileSync(path.join(dir, `icon${size}.png`), png(size, render(size)));
+  for (const size of SIZES) fs.writeFileSync(path.join(dir, `icon${size}.png`), png(size, rasterize(layers(size), size)));
   console.log('icons:', SIZES.join(', '));
 }
-module.exports = { SMALL, render, png, X_PATH, TWO_PATH, TWO_SCALE, TWO_SHIFT, GLYPH_BOX: GLYPH.box };
+module.exports = { mark };

@@ -10,6 +10,8 @@
     showToast: true,
     language: 'auto',        // 'auto' 跟随浏览器 | 'zh' | 'en'
     openPdfInViewer: false,  // 自动用内置 PDF.js 阅读器打开 PDF；默认仍用浏览器自带阅读器，需要时再切换
+    imageLimit: true,        // 复制 PDF 中的图片时限制大小，超过上限自动压缩；关闭则不压缩（无损 PNG）
+    imageMaxKB: 100,         // 图片大小上限（内嵌数据的长度，KB）
     // 页面内快捷键（null 表示未设置）。有选区时触发插件复制，没有选区时按键照常传给页面
     shortcuts: {
       markdown: { code: 'KeyM', key: 'M', ctrl: false, alt: true, shift: true, meta: false },

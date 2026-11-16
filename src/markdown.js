@@ -45,7 +45,21 @@
   }
 
   const EMPH_TAG = { '**': 'strong', '*': 'em', '~~': 'del' };
+  // 紧挨着的两段同类强调合并成一段：<b>甲</b><b>乙</b> 输出 **甲乙**，而不是 **甲****乙**
+  function mergeAdjacentEmphasis(md, st) {
+    const into = new Map();
+    const root = (id) => (into.has(id) ? root(into.get(id)) : id);
+    md = md.replace(new RegExp(`${EMPH_CLOSE}(\\d+)${EMPH_CLOSE}${EMPH_OPEN}(\\d+)${EMPH_OPEN}`, 'g'), (m, a, b) => {
+      if (st.emph[a] !== st.emph[b]) return m;
+      into.set(b, a);
+      return '';
+    });
+    if (!into.size) return md;
+    return md.replace(new RegExp(`${EMPH_CLOSE}(\\d+)${EMPH_CLOSE}`, 'g'), (m, id) => `${EMPH_CLOSE}${root(id)}${EMPH_CLOSE}`);
+  }
+
   function resolveEmphasis(md, st) {
+    md = mergeAdjacentEmphasis(md, st);
     const re = new RegExp(`${EMPH_OPEN}(\\d+)${EMPH_OPEN}|${EMPH_CLOSE}(\\d+)${EMPH_CLOSE}`, 'g');
     const pos = {};
     let m;
@@ -279,9 +293,10 @@
       }
       case 'br': return ctx.table ? '<br>' : ctx.inline ? ' ' : BR + '\n';
       case 'hr': return ctx.inline || ctx.table ? ' ' : blk('---');
-      case 'strong': case 'b': return wrap(kids(node, ctx), '**', ctx.st);
-      case 'em': case 'i': case 'cite': case 'dfn': case 'var': return wrap(kids(node, ctx), '*', ctx.st);
-      case 'del': case 's': case 'strike': return wrap(kids(node, ctx), '~~', ctx.st);
+      // 已在粗体 / 斜体 / 删除线中的同类标记不再重复包裹（否则会输出 ****text****，例如页面用 CSS 加粗的 span 里又有 <strong>）
+      case 'strong': case 'b': return ctx.bold ? kids(node, ctx) : wrap(kids(node, { ...ctx, bold: true }), '**', ctx.st);
+      case 'em': case 'i': case 'cite': case 'dfn': case 'var': return ctx.italic ? kids(node, ctx) : wrap(kids(node, { ...ctx, italic: true }), '*', ctx.st);
+      case 'del': case 's': case 'strike': return ctx.strike ? kids(node, ctx) : wrap(kids(node, { ...ctx, strike: true }), '~~', ctx.st);
       case 'code': case 'samp': case 'tt': return inlineCode(rawText(node, ctx.st));
       case 'kbd': return `<kbd>${rawText(node, ctx.st)}</kbd>`;
       case 'sub': case 'sup': return `<${tag}>${kids(node, ctx)}</${tag}>`;
@@ -295,7 +310,7 @@
       case 'input': return node.getAttribute('type') === 'checkbox' ? (node.hasAttribute('checked') ? '[x] ' : '[ ] ') : '';
       case 'dt': case 'summary': {
         if (ctx.inline || ctx.table) return kids(node, ctx);
-        return blk(wrap(kids(node, ctx).trim(), '**', ctx.st));
+        return blk(wrap(kids(node, { ...ctx, bold: true }).trim(), '**', ctx.st));
       }
       default: {
         if (!BLOCK.has(tag)) return kids(node, ctx);

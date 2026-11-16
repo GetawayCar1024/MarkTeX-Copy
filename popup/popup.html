@@ -90,6 +90,19 @@
     </section>
     <p class="footnote" data-i18n="popup.footMath"></p>
 
+    <h2 class="group-title" data-i18n="popup.groupImages"></h2>
+    <section class="group">
+      <label class="row static">
+        <span class="label" data-i18n="popup.imageLimit"></span>
+        <input type="checkbox" class="switch" name="imageLimit">
+      </label>
+      <label class="row static" data-depends="imageLimit">
+        <span class="label" data-i18n="popup.imageMaxKB"></span>
+        <span class="num-field"><input type="number" class="num" name="imageMaxKB" min="10" max="100000" step="10" inputmode="numeric"><span class="unit">KB</span></span>
+      </label>
+    </section>
+    <p class="footnote" data-i18n="popup.footImages"></p>
+
     <h2 class="group-title" data-i18n="popup.groupKeys"></h2>
     <section class="group">
       <div class="row static">

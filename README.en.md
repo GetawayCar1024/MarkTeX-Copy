@@ -23,7 +23,7 @@ To copy from local files (`file://`), also turn on **Allow access to file URLs**
 
 - **Context menu**: copy as Markdown / HTML (rich text) / HTML source; right-click a formula to copy just its LaTeX
 - **Shortcuts**: `Alt+Shift+M` (Markdown) and `Alt+Shift+H` (HTML) by default, changeable in the popup. They only act on a selection, so `Ctrl+C` works too
-- **Popup**: copy, preview, and settings such as formula delimiters and language
+- **Popup**: copy, preview, and settings such as formula delimiters, the PDF image size limit and language
 
 ## Formulas
 
@@ -43,6 +43,7 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 - PDFs still open in the browser's viewer; copying there prompts you to switch instead of copying plain text
 - The reader shares the popup's style and follows the system light / dark theme; the sidebar switches between page thumbnails, the outline and more
 - Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
+- Inline images over the size limit (100 KB by default) are compressed; change the limit or turn it off in the popup
 - PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes; exported on Windows or macOS) are recognized too; TeX in outline titles is shown as math
 - Line numbers beside code blocks and samples aren't copied (including samples typeset with LaTeX listings); tables split across pages are merged; running headers / footers and content hidden at page breaks are dropped
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
@@ -56,4 +57,4 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 
 ## License
 
-MIT. The bundled PDF.js is licensed under Apache License 2.0; `src/mathjax-glyphs.js` and the x² in the icon come from MathJax fonts (Apache License 2.0).
+MIT. The bundled PDF.js is licensed under Apache License 2.0; `src/mathjax-glyphs.js` is generated from MathJax fonts (Apache License 2.0); the icon is based on the Markdown mark (Dustin Curtis, CC0).
