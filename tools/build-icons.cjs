@@ -35,12 +35,12 @@ function layers(size) {
   ];
 }
 
-// 矢量原稿（128 × 128，不留边）
-function svg() {
+// 矢量原稿（128 × 128，不留边）；viewBox 可只取徽章部分（阅读器工具栏中的 MarkTeX 按钮）
+function svg(viewBox = '0 0 128 128') {
   const { badge: b, m, arrow } = mark();
   const n = (v) => +v.toFixed(2);
   const poly = (p) => 'M' + p.map(([x, y]) => `${n(x)} ${n(y)}`).join('L') + 'Z';
-  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">\n' +
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">\n` +
     `  <defs><linearGradient id="badge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${b.top}"/><stop offset="1" stop-color="${b.bottom}"/></linearGradient></defs>\n` +
     `  <rect x="${b.x0}" y="${b.y0}" width="${b.x1 - b.x0}" height="${b.y1 - b.y0}" rx="${b.r}" fill="url(#badge)"/>\n` +
     `  <path d="${poly(m)}${poly(arrow)}" fill="${GLYPH.color}"/>\n` +
@@ -54,4 +54,4 @@ if (require.main === module) {
   for (const size of SIZES) fs.writeFileSync(path.join(dir, `icon${size}.png`), png(size, rasterize(layers(size), size)));
   console.log('icons:', SIZES.join(', '));
 }
-module.exports = { mark };
+module.exports = { mark, svg };

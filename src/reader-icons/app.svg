@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 24 128 80">
+  <defs><linearGradient id="badge" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#47a3ff"/><stop offset="1" stop-color="#0a6cff"/></linearGradient></defs>
+  <rect x="0" y="24" width="128" height="80" rx="16" fill="url(#badge)"/>
+  <path d="M16 85.06L16 42.94L28.39 42.94L40.77 58.43L53.16 42.94L65.55 42.94L65.55 85.06L53.16 85.06L53.16 60.9L40.77 76.39L28.39 60.9L28.39 85.06ZM93.42 85.06L74.84 64.62L87.23 64.62L87.23 42.94L99.61 42.94L99.61 64.62L112 64.62Z" fill="#ffffff"/>
+</svg>

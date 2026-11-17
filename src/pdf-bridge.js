@@ -212,7 +212,7 @@
       seg.appendChild(tab);
       sync();
     }
-    const label = () => { for (const [tab, key] of tabs) tab.textContent = CCM.t(key); };
+    const label = () => { for (const [tab, key] of tabs) tab.replaceChildren(make('span', { className: 'marktex-seg-label', textContent: CCM.t(key) })); };
     withLanguage(label);
     onSettingsChanged(label);
     title.prepend(seg);
@@ -228,15 +228,20 @@
     { action: 'native', label: 'pdf.openNative', tile: 'indigo', icon: 'open-native' },
   ];
 
+  // 工具栏中弹出框的关闭方法（按钮 → close），供下面的 managePopovers 使用
+  const popoverClose = new Map();
+
   function buildToolbar() {
     const right = $('toolbarViewerRight');
     if (!right || $('marktexButton')) return;
-    const wrap = make('div', { className: 'marktex-menu-wrap' });
-    const btn = make('button', { id: 'marktexButton', type: 'button', className: 'marktex-button', title: 'MarkTeX Copy' });
+    // 与其他工具栏按钮相同的结构：.toolbarButtonWithContainer 中的按钮与弹出框；按钮只显示扩展图标
+    const wrap = make('div', { id: 'marktexMenuContainer', className: 'toolbarButtonWithContainer marktex-menu-wrap' });
+    const btn = make('button', { id: 'marktexButton', type: 'button', className: 'toolbarButton', title: 'MarkTeX Copy' });
     btn.setAttribute('aria-haspopup', 'menu');
     btn.setAttribute('aria-expanded', 'false');
-    btn.innerHTML = '<span class="marktex-logo" aria-hidden="true"></span><span class="marktex-label">MarkTeX</span><span class="marktex-caret" aria-hidden="true"></span>';
-    const menu = make('div', { className: 'marktex-menu', hidden: true });
+    btn.setAttribute('aria-controls', 'marktexMenu');
+    btn.append(make('span', { textContent: 'MarkTeX Copy' }));
+    const menu = make('div', { id: 'marktexMenu', className: 'marktex-menu', hidden: true });
     menu.setAttribute('role', 'menu');
     const render = (shortcuts = {}) => {
       menu.textContent = '';
@@ -263,6 +268,7 @@
       } catch (_) { render(); }
     };
     const setOpen = (open) => { menu.hidden = !open; btn.setAttribute('aria-expanded', String(open)); };
+    popoverClose.set(btn, () => setOpen(false));
     withLanguage(update);
     onSettingsChanged(update);
 
@@ -274,12 +280,6 @@
       setOpen(false);
       if (b.dataset.action === 'native') openNative();
       else if (CCM.copyFormat) CCM.copyFormat(b.dataset.action);
-    });
-    document.addEventListener('click', (e) => { if (!wrap.contains(e.target)) setOpen(false); });
-    document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || menu.hidden) return;
-      if (menu.contains(document.activeElement)) btn.focus();
-      setOpen(false);
     });
     // 键盘操作：在按钮上按 ↓ / ↑ 打开菜单，菜单中用 ↓ / ↑ 移动（只在用键盘时移动焦点，鼠标点击不改变焦点和页面选区）
     const focusItem = (step) => {
@@ -314,6 +314,66 @@
     }
   }
 
+  // ---------- 工具栏中的弹出框：MarkTeX 菜单、查找栏、更多菜单、批注工具的参数面板 ----------
+  // 同一时刻只展开一个；在框外按下鼠标（页面、侧栏、工具栏的其他位置）或按 Esc 时收起。
+  // 批注工具（高亮、文字、画笔、图片等）同时是一种模式：收起的只是参数面板，工具仍然选中（按钮保持高亮），
+  // 可以继续在页面上书写；这时再点按钮重新展开面板，面板展开时点按钮则退出工具（与 PDF.js 相同）。
+  function managePopovers(app) {
+    const boxes = Array.from(document.querySelectorAll('#toolbarViewerRight button[aria-controls]')).map((button) => ({
+      button,
+      panel: $(button.getAttribute('aria-controls')),
+      root: button.closest('.toolbarButtonWithContainer') || button.parentElement,
+      tool: /^editor\w+Button$/.test(button.id),
+    })).filter((b) => b.panel);
+    const isOpen = (b) => b.button.getAttribute('aria-expanded') === 'true';
+    const close = (b) => {
+      if (!isOpen(b)) return;
+      if (b.tool) {
+        b.panel.classList.add('hidden');
+        b.button.setAttribute('aria-expanded', 'false');
+      } else if (popoverClose.has(b.button)) {
+        popoverClose.get(b.button)();
+      } else if (b.button.id === 'viewFindButton' && app.findBar) {
+        app.findBar.close();
+      } else if (b.button.id === 'secondaryToolbarToggleButton' && app.secondaryToolbar) {
+        app.secondaryToolbar.close();
+      } else {
+        b.button.click();
+      }
+    };
+
+    // 展开一个时收起其他的（包括用 Ctrl+F 等快捷键、键盘操作打开的情况）
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        const opened = boxes.find((b) => b.button === r.target && isOpen(b));
+        if (opened) for (const b of boxes) if (b !== opened) close(b);
+      }
+    });
+    for (const b of boxes) observer.observe(b.button, { attributes: true, attributeFilter: ['aria-expanded'] });
+
+    document.addEventListener('pointerdown', (e) => {
+      for (const b of boxes) if (isOpen(b) && !b.root.contains(e.target)) close(b);
+    }, true);
+
+    // 工具仍然选中、面板已收起时点按钮：重新展开面板（PDF.js 原本会退出工具）
+    document.addEventListener('click', (e) => {
+      const b = boxes.find((x) => x.tool && x.button.contains(e.target));
+      if (!b || isOpen(b) || !b.button.classList.contains('toggled')) return;
+      e.stopImmediatePropagation();
+      b.panel.classList.remove('hidden');
+      b.button.setAttribute('aria-expanded', 'true');
+    }, true);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Escape') return;
+      for (const b of boxes) {
+        if (!isOpen(b)) continue;
+        if (b.panel.contains(document.activeElement)) b.button.focus();
+        close(b);
+      }
+    }, true);
+  }
+
   document.addEventListener('webviewerloaded', () => {
     const opts = window.PDFViewerApplicationOptions;
     const app = window.PDFViewerApplication;
@@ -326,6 +386,7 @@
     app.initializedPromise.then(() => {
       layoutToolbar(app);
       buildToolbar();
+      managePopovers(app);
       buildSidebarViews();
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
       // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式

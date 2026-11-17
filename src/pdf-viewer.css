@@ -111,6 +111,29 @@ select {
   background: var(--mt-accent-soft-2);
 }
 
+/* 界面文字按字高（大写字母高度）上下居中，而不是按行高：Segoe UI 等字体的上行高度远大于下行高度，
+   按行高居中时文字整体偏低约 1px，与图标、色块并排时尤其明显 */
+#secondaryToolbar .toolbarButton.labeled > span,
+.editorParamsToolbar :is(.toolbarButton.labeled > span, :is(.editorParamsSetter, .toggler) > .editorParamsLabel),
+.marktex-menu :is(.marktex-item-label, .marktex-kbd),
+#findbar :is(#findResultsCount, #findMsg, .toggleButton.toolbarLabel > label) {
+  text-box: trim-both cap alphabetic;
+}
+
+/* PDF.js 给按钮中的文字加了 overflow: hidden（只显示图标的按钮用），按字高裁剪后会切掉超出字高的笔画 */
+#secondaryToolbar .toolbarButton.labeled > span,
+.editorParamsToolbar .toolbarButton.labeled > span {
+  overflow: visible;
+}
+
+/* 标题的省略号需要 overflow: hidden，上下留出超出字高的笔画 */
+@supports (text-box: trim-both cap alphabetic) {
+  #marktexTitle {
+    padding-block: 4px;
+    text-box: trim-both cap alphabetic;
+  }
+}
+
 /* ====================================================================
    工具栏
    页面不会滚到工具栏下方，工具栏本身不加毛玻璃；这样从工具栏弹出的菜单、查找栏、侧栏才能模糊其后的页面
@@ -220,14 +243,9 @@ select {
   }
 }
 
-/* 侧栏按钮上“有大纲 / 附件”的提示点 */
+/* 侧栏按钮不显示“文档有大纲 / 附件”的提示点 */
 .pdfSidebarNotification::after {
-  top: 5px;
-  inset-inline-end: 5px;
-  width: 7px;
-  height: 7px;
-  background-color: var(--mt-accent);
-  box-shadow: 0 0 0 1.5px var(--mt-chrome);
+  display: none !important;
 }
 
 /* ---------- 分组：翻页与页码、缩放（src/pdf-bridge.js 中的 .marktex-group） ---------- */
@@ -253,8 +271,10 @@ select {
   }
 }
 
+/* 页码与“/ 12”按基线对齐（输入框中文字的位置与普通文字的算法不同，居中对齐时会差 1px） */
 .marktex-pages > .toolbarHorizontalGroup {
   gap: 0;
+  align-items: baseline;
 }
 
 /* 页码框随内容变宽（有页码标签时如“xviii”）。PDF.js 用 #toolbarContainer #toolbarViewer input 设定输入框字体，选择器要比它具体 */
@@ -298,10 +318,11 @@ select {
   }
 }
 
+/* 下内边距让“/ 12”的基线略高于页码框中的文字，基线对齐时以页码框为准（页码框中的数字正好居中） */
 #toolbarContainer #toolbarViewer #numPages.toolbarLabel {
   min-width: 0;
   margin: 0;
-  padding: 0 6px 0 1px;
+  padding: 0 6px 2px 1px;
   color: var(--mt-label-2);
   font: 13px/1 var(--mt-font);
   font-variant-numeric: tabular-nums;
@@ -316,11 +337,12 @@ select {
   border-radius: var(--mt-r-inner);
   background-color: transparent;
 
+  /* 下内边距 2px：下拉框中的文字（尤其是中文）按行高居中时偏低约 1px */
   > select {
     min-width: 0;
     width: auto;
     height: 28px;
-    padding: 0 26px 0 10px;
+    padding: 0 26px 2px 10px;
     border-radius: var(--mt-r-inner);
     background-color: transparent;
     color: var(--mt-label);
@@ -362,58 +384,13 @@ select {
 }
 
 /* ---------- MarkTeX 按钮与菜单 ---------- */
-.marktex-menu-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  margin-inline-start: 2px;
-}
-
-.marktex-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 7px 0 6px;
-  border: 0;
-  border-radius: var(--mt-r-control);
-  background: var(--mt-accent-soft);
-  color: var(--mt-accent);
-  font: 600 13px/1 var(--mt-font);
-  cursor: pointer;
-  transition: background-color 0.12s;
-
-  &:hover,
-  &[aria-expanded="true"] {
-    background: var(--mt-accent-soft-2);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--mt-accent);
-    outline-offset: -2px;
-  }
-
-  .marktex-logo,
-  .marktex-caret {
-    display: inline-block;
-    flex: none;
-    background-color: currentColor;
-    -webkit-mask: var(--marktex-logo-icon) center / contain no-repeat;
-    mask: var(--marktex-logo-icon) center / contain no-repeat;
-  }
-
-  .marktex-logo {
-    width: 20px;
-    height: 20px;
-  }
-
-  .marktex-caret {
-    width: 14px;
-    height: 14px;
-    opacity: 0.8;
-    -webkit-mask-image: var(--toolbarButton-menuArrow-icon);
-    mask-image: var(--toolbarButton-menuArrow-icon);
-  }
+/* 按钮与其他工具栏按钮相同（悬停、按下、展开时的底色），图标是彩色的扩展图标，不按遮罩着色 */
+#toolbarViewer #marktexButton::before {
+  width: 20px;
+  height: 20px;
+  background: url(/src/reader-icons/app.svg) center / contain no-repeat !important;
+  -webkit-mask: none;
+  mask: none;
 }
 
 .marktex-menu {
@@ -502,20 +479,10 @@ select {
   background: var(--mt-separator);
 }
 
-/* ---------- 窄窗口：依次收起标题、MarkTeX 文字、批注工具与适合 / 旋转 ---------- */
+/* ---------- 窄窗口：依次收起标题、批注工具与适合 / 旋转 ---------- */
 @media (max-width: 1100px) {
   #marktexTitle {
     display: none;
-  }
-}
-
-@media (max-width: 960px) {
-  .marktex-button {
-    padding: 0 6px;
-
-    .marktex-label {
-      display: none;
-    }
   }
 }
 
@@ -575,6 +542,7 @@ dialog {
 
   #secondaryToolbarButtonContainer {
     padding: 0;
+    overflow-x: hidden;
   }
 
   .toolbarButton.labeled {
@@ -622,7 +590,9 @@ dialog {
     }
   }
 
+  /* PDF.js 的分隔线是 width: 100%，再加左右边距会比菜单宽，菜单因此可以左右滚动 */
   .horizontalToolbarSeparator {
+    width: auto;
     margin: 5px 8px;
     border-top: 0.5px solid var(--mt-separator);
   }
@@ -771,8 +741,11 @@ dialog {
     height: 32px;
     padding-inline: 2px 4px;
 
+    /* PDF.js 给这两个标签 16px 的最小宽度：没有提示时空的 #findMsg 也占位，结果数较长时会被挤到下一行 */
     #findResultsCount,
     #findMsg {
+      display: block;
+      min-width: 0;
       height: auto;
       min-height: 0;
       margin: 0;
@@ -1007,7 +980,10 @@ dialog::backdrop {
 
 .marktex-seg {
   position: relative;
+  display: flex;
   flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
   min-width: 0;
   height: 28px;
   padding: 0 8px;
@@ -1015,10 +991,7 @@ dialog::backdrop {
   border-radius: var(--mt-r-inner);
   background: transparent;
   color: var(--mt-label);
-  font: 500 13px/28px var(--mt-font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font: 500 13px/18px var(--mt-font);
   cursor: pointer;
   transition: background-color 0.15s, box-shadow 0.15s;
 
@@ -1055,6 +1028,16 @@ dialog::backdrop {
     outline: 2px solid var(--mt-accent);
     outline-offset: -2px;
   }
+}
+
+/* 文字按字高（而不是整行的高度）上下居中；上下内边距留给超出字高的笔画，文字过长时显示省略号 */
+.marktex-seg-label {
+  min-width: 0;
+  padding-block: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-box: trim-both cap alphabetic;
 }
 
 /* 只有一种视图时只作为标题 */
@@ -1108,6 +1091,7 @@ dialog::backdrop {
       outline-offset: 2px;
     }
 
+    /* 页码：数字按字高（而不是整行的高度）在胶囊中上下居中 */
     &:not(.isDragging) > .thumbnailImageContainer::after {
       inset-block: calc(100% + 7px) auto;
       height: 18px;
@@ -1120,6 +1104,9 @@ dialog::backdrop {
       background: none;
       color: var(--mt-label-2);
       font: 500 12px/18px var(--mt-font);
+      font-variant-numeric: tabular-nums;
+      text-box: trim-both cap alphabetic;
+      align-content: center;
     }
 
     &:has([aria-current="page"]):not(.isDragging) > .thumbnailImageContainer::after {
@@ -1230,6 +1217,15 @@ dialog::backdrop {
   }
 }
 
+/* 文字按字高居中（见文件开头），行高不变：30px = 字高 + 上下内边距。
+   含分式等较高公式的标题除外（按字高裁剪后行高不再随公式增加，公式会伸到相邻的行） */
+@supports (text-box: trim-both cap alphabetic) {
+  #viewsManager :is(.treeView, #attachmentsView) .treeItem > a:not(:has(.tx-frac, .tx-stack)) {
+    padding-block: calc((30px - 0.7em) / 2);
+    text-box: trim-both cap alphabetic;
+  }
+}
+
 /* 层级：缩进量由 --mt-depth 决定。外层每多一个 .treeItem 选择器就更具体，取最深的一条；更深的层级与第 6 层相同 */
 #viewsManager .treeItem { --mt-depth: 0; }
 #viewsManager .treeItem .treeItem { --mt-depth: 1; }
@@ -1239,14 +1235,123 @@ dialog::backdrop {
 #viewsManager .treeItem .treeItem .treeItem .treeItem .treeItem .treeItem { --mt-depth: 5; }
 #viewsManager .treeItem .treeItem .treeItem .treeItem .treeItem .treeItem .treeItem { --mt-depth: 6; }
 
-/* 大纲标题中的公式（src/tex-lite.js） */
-.tx-math { font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", "Times New Roman", serif; white-space: nowrap; }
-.tx-math i { font-style: italic; }
-.tx-math .tx-up { font-style: normal; }
-.tx-math sup, .tx-math sub { font-size: 0.72em; line-height: 0; }
-.tx-frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; font-size: 0.8em; line-height: 1.1; margin: 0 0.1em; }
-.tx-frac > span:first-child { border-bottom: 1px solid currentColor; padding: 0 0.1em; }
-.tx-sqrt { border-top: 1px solid currentColor; padding-top: 0.05em; }
+/* 大纲标题中的公式（src/tex-lite.js）：数学字体（斜体字母是 Unicode 数学字母）；\text 等文字命令用界面字体；
+   原子间的空隙与 TeX 相同（3 / 4 / 5mu） */
+.tx-math {
+  font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", "STIXGeneral", "Noto Sans Math", "Times New Roman", var(--mt-font);
+  font-size: 1.08em;
+  font-style: normal;
+  white-space: nowrap;
+
+  .tx-math {
+    font-size: 1em;
+  }
+
+  :is(b, i, .tx-text, .tx-sc, .tx-sf) {
+    font-family: var(--mt-font);
+  }
+
+  sup,
+  sub {
+    font-size: 0.72em;
+    line-height: 0;
+  }
+}
+
+.tx-s1 { margin-inline-start: 0.1667em; }
+.tx-s2 { margin-inline-start: 0.2222em; }
+.tx-s3 { margin-inline-start: 0.2778em; }
+.tx-sneg { margin-inline-start: -0.1667em; }
+.tx-en { margin-inline-start: 0.5em; }
+.tx-quad { margin-inline-start: 1em; }
+.tx-qquad { margin-inline-start: 2em; }
+
+/* 同时有上标和下标：上下叠放 */
+.tx-ss {
+  display: inline-flex;
+  flex-direction: column;
+  margin-block: -0.3em;
+  font-size: 0.72em;
+  line-height: 1;
+  vertical-align: 0.58em;
+}
+
+.tx-frac {
+  display: inline-flex;
+  flex-direction: column;
+  margin: 0 0.1em;
+  font-size: 0.8em;
+  line-height: 1.1;
+  text-align: center;
+  vertical-align: middle;
+
+  > span:first-child {
+    padding: 0 0.1em;
+    border-bottom: 1px solid currentColor;
+  }
+
+  &.tx-binom > span:first-child {
+    border-bottom: 0;
+  }
+}
+
+.tx-root { margin-inline-end: -0.25em; }
+.tx-ol { padding-top: 0.14em; border-top: 1px solid currentColor; }
+.tx-ul { text-decoration: underline; text-underline-offset: 0.12em; }
+.tx-del { text-decoration: line-through; }
+.tx-box { padding: 0 0.15em; border: 1px solid currentColor; border-radius: 2px; }
+.tx-ph { visibility: hidden; }
+.tx-sc { font-variant: small-caps; }
+.tx-sf { font-family: var(--mt-font); }
+.tx-tt { font-family: ui-monospace, "SF Mono", "Cascadia Mono", Consolas, "Courier New", var(--mt-font); font-size: 0.92em; }
+
+/* 重音（\hat、\vec 等）画在参数正上方 */
+.tx-acc {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+
+  &::after {
+    content: attr(data-acc);
+    position: absolute;
+    inset-inline: 0;
+    top: -0.12em;
+    line-height: 1;
+    text-align: center;
+    pointer-events: none;
+  }
+
+  &.tx-acc-arrow::after {
+    top: -0.62em;
+    font-size: 0.7em;
+  }
+}
+
+/* \overset、\xrightarrow 等：小号的标注在上方 / 下方 */
+.tx-stack {
+  position: relative;
+  display: inline-block;
+  line-height: 1;
+  text-align: center;
+}
+
+.tx-over-a,
+.tx-under-a {
+  position: absolute;
+  inset-inline: -1em;
+  font-size: 0.6em;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.tx-over-a { bottom: 1.2em; }
+.tx-under-a { top: 1.5em; }
+
+/* TeX、LaTeX 标志 */
+.tx-logo { font-family: "Latin Modern Roman", Cambria, "Times New Roman", serif; }
+.tx-logo-a { display: inline-block; margin-inline: -0.32em -0.12em; font-size: 0.72em; text-transform: uppercase; vertical-align: 0.28em; }
+.tx-logo-e { display: inline-block; margin-inline: -0.14em -0.1em; text-transform: uppercase; vertical-align: -0.22em; }
 
 /* ====================================================================
    页面
@@ -1336,7 +1441,6 @@ dialog::backdrop {
    图标：src/reader-icons（由 tools/build-reader-icons.cjs 生成）
    ==================================================================== */
 :root {
-  --marktex-logo-icon: url(/src/reader-icons/logo.svg);
   --toolbarButton-viewsManagerToggle-icon: url(/src/reader-icons/sidebar.svg);
   --toolbarButton-search-icon: url(/src/reader-icons/search.svg);
   --toolbarButton-pageUp-icon: url(/src/reader-icons/chevron-up.svg);

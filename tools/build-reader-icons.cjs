@@ -3,27 +3,15 @@
 // 用法：node tools/build-reader-icons.cjs
 const fs = require('fs');
 const path = require('path');
-const { mark } = require('./build-icons.cjs');
+const { mark, svg } = require('./build-icons.cjs');
 
 const S = (body) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="none" stroke="#000" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${body}</svg>\n`;
 // 实心图标（24×24），与扩展弹窗中各行的图标相同
 const F = (d) => `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="${d}"/></svg>\n`;
 const dot = (x, y, r = 1.25) => `<circle cx="${x}" cy="${y}" r="${r}" fill="#000" stroke="none"/>`;
 const page = (x, y, w, h) => `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="1.8"/>`;
-
-// MarkTeX 按钮：与扩展图标相同的 Markdown 徽章，M↓ 镂空（单色图标中显示为按钮的底色）
-function logo() {
-  const { badge: b, m, arrow } = mark();
-  const s = 18 / 128; // 徽章宽 18，居中
-  const ox = 1;
-  const oy = 10 - ((b.y0 + b.y1) / 2) * s;
-  const n = (v) => +v.toFixed(3);
-  const [x0, y0, x1, y1, r] = [ox + b.x0 * s, oy + b.y0 * s, ox + b.x1 * s, oy + b.y1 * s, b.r * s].map(n);
-  const arc = (x, y) => `A${r} ${r} 0 0 1 ${n(x)} ${n(y)}`;
-  const badge = `M${n(x0 + r)} ${y0}H${n(x1 - r)}${arc(x1, y0 + r)}V${n(y1 - r)}${arc(x1 - r, y1)}H${n(x0 + r)}${arc(x0, y1 - r)}V${n(y0 + r)}${arc(x0 + r, y0)}Z`;
-  const poly = (p) => 'M' + p.map(([x, y]) => `${n(ox + x * s)} ${n(oy + y * s)}`).join('L') + 'Z';
-  return `<path fill="#000" stroke="none" fill-rule="evenodd" d="${badge}${poly(m)}${poly(arrow)}"/>`;
-}
+// 平移整个图案，使墨迹（含线宽）在 20×20 中居中
+const shift = (dx, dy, body) => `<g transform="translate(${dx} ${dy})">${body}</g>`;
 
 const ICONS = {
   sidebar: '<rect x="2.75" y="3.75" width="14.5" height="12.5" rx="2.75"/><path d="M7.75 3.75v12.5M4.75 7h1M4.75 9.5h1"/>',
@@ -38,8 +26,8 @@ const ICONS = {
   text: '<path d="M5 6V4.5h10V6M10 4.5v11M8 15.5h4"/>',
   ink: '<path d="M13.3 3.9a1.7 1.7 0 0 1 2.4 0l.4.4a1.7 1.7 0 0 1 0 2.4L7.6 15.2l-3.85 1.05L4.8 12.4z"/><path d="m12 5.2 2.8 2.8"/>',
   stamp: '<rect x="2.75" y="4" width="14.5" height="12" rx="2.5"/><circle cx="7.2" cy="8.2" r="1.3"/><path d="m3.2 14 4.1-3.4 3.2 2.6 2.4-2 4 3.1"/>',
-  signature: '<path d="M3 13.5c1.8-3.7 3.2-6.4 4.3-6.4 1.3 0-1.2 6 .6 6 1.3 0 2.2-3.4 3.3-3.4.9 0-.2 2.6 1.1 2.6.9 0 1.7-.8 3.2-.8"/><path d="M3 16.75h14"/>',
-  comment: '<path d="M4.75 4h10.5a2 2 0 0 1 2 2v6.25a2 2 0 0 1-2 2H9.5l-3.75 2.9v-2.9h-1a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>',
+  signature: shift(0, -1.9, '<path d="M3 13.5c1.8-3.7 3.2-6.4 4.3-6.4 1.3 0-1.2 6 .6 6 1.3 0 2.2-3.4 3.3-3.4.9 0-.2 2.6 1.1 2.6.9 0 1.7-.8 3.2-.8"/><path d="M3 16.75h14"/>'),
+  comment: shift(0, -0.55, '<path d="M4.75 4h10.5a2 2 0 0 1 2 2v6.25a2 2 0 0 1-2 2H9.5l-3.75 2.9v-2.9h-1a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z"/>'),
   print: '<path d="M6 7.25V3.75h8v3.5"/><rect x="2.75" y="7.25" width="14.5" height="7" rx="2"/><path d="M6 12h8v4.5H6z"/>',
   download: '<path d="M10 3.25v9.5M6.25 9.25 10 13l3.75-3.75"/><path d="M3.75 13.5v1.25a2 2 0 0 0 2 2h8.5a2 2 0 0 0 2-2V13.5"/>',
   more: dot(5, 10) + dot(10, 10) + dot(15, 10),
@@ -53,15 +41,15 @@ const ICONS = {
   locate: '<circle cx="10" cy="10" r="5.75"/>' + dot(10, 10, 1.6) + '<path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2"/>',
   close: '<path d="m5.5 5.5 9 9M14.5 5.5l-9 9"/>',
   check: '<path d="m4.5 10.5 3.75 3.5 7.25-8"/>',
-  'first-page': '<path d="M5 4.5h10M5 13.5l5-5 5 5"/>',
-  'last-page': '<path d="M5 15.5h10M5 6.5l5 5 5-5"/>',
-  'rotate-cw': '<path d="M15.75 10a5.75 5.75 0 1 1-1.9-4.3"/><path d="M15.5 3.25v3.25h-3.25"/>',
-  'rotate-ccw': '<path d="M4.25 10a5.75 5.75 0 1 0 1.9-4.3"/><path d="M4.5 3.25v3.25h3.25"/>',
+  'first-page': '<path d="M5 5.5h10M5 14.5l5-5 5 5"/>',
+  'last-page': '<path d="M5 14.5h10M5 5.5l5 5 5-5"/>',
+  'rotate-cw': shift(0, 0.5, '<path d="M15.75 10a5.75 5.75 0 1 1-1.9-4.3"/><path d="M15.5 3.25v3.25h-3.25"/>'),
+  'rotate-ccw': shift(0, 0.5, '<path d="M4.25 10a5.75 5.75 0 1 0 1.9-4.3"/><path d="M4.5 3.25v3.25h3.25"/>'),
   // 适合页面 / 适合页宽
   'fit-page': '<path d="M3.75 3.25h12.5M3.75 16.75h12.5M10 6v8M7.75 8 10 5.75 12.25 8M7.75 12 10 14.25 12.25 12"/>',
   'fit-width': '<path d="M3.25 3.75v12.5M16.75 3.75v12.5M6 10h8M8 7.75 5.75 10 8 12.25M12 7.75l2.25 2.25L12 12.25"/>',
-  select: '<path d="M5.25 3.5 15 9.3l-4.4 1.15-2.1 4.1z"/>',
-  hand: '<path d="M7 10.5V5.25a1.25 1.25 0 0 1 2.5 0V9.5M9.5 9.25V4a1.25 1.25 0 0 1 2.5 0v5.25M12 9.5V5.5a1.25 1.25 0 0 1 2.5 0v6.25a5 5 0 0 1-5 5h-.6a4.6 4.6 0 0 1-3.7-1.9l-2.1-2.9a1.25 1.25 0 0 1 2-1.5L7 12.25"/>',
+  select: shift(-0.1, 0.95, '<path d="M5.25 3.5 15 9.3l-4.4 1.15-2.1 4.1z"/>'),
+  hand: shift(1.3, 0.25, '<path d="M7 10.5V5.25a1.25 1.25 0 0 1 2.5 0V9.5M9.5 9.25V4a1.25 1.25 0 0 1 2.5 0v5.25M12 9.5V5.5a1.25 1.25 0 0 1 2.5 0v6.25a5 5 0 0 1-5 5h-.6a4.6 4.6 0 0 1-3.7-1.9l-2.1-2.9a1.25 1.25 0 0 1 2-1.5L7 12.25"/>'),
   'scroll-page': page(5.5, 3, 9, 14),
   'scroll-vertical': page(5.5, 2.75, 9, 6.25) + page(5.5, 11, 9, 6.25),
   'scroll-horizontal': page(2.75, 5.5, 6.25, 9) + page(11, 5.5, 6.25, 9),
@@ -70,7 +58,6 @@ const ICONS = {
   'spread-odd': page(2.75, 4, 6.5, 12) + page(10.75, 4, 6.5, 12) + '<path d="M5 8h2"/>',
   'spread-even': page(2.75, 4, 6.5, 12) + page(10.75, 4, 6.5, 12) + '<path d="M13 8h2"/>',
   info: '<circle cx="10" cy="10" r="7.25"/><path d="M10 9.25V14"/>' + dot(10, 6.4, 1),
-  logo: logo(),
 };
 
 // MarkTeX 菜单中各项的彩色小方块里的图标（与扩展弹窗一致）
@@ -86,7 +73,10 @@ const dir = path.join(__dirname, '..', 'src', 'reader-icons');
 fs.mkdirSync(dir, { recursive: true });
 for (const [name, body] of Object.entries(ICONS)) fs.writeFileSync(path.join(dir, `${name}.svg`), S(body));
 for (const [name, d] of Object.entries(FILLED)) fs.writeFileSync(path.join(dir, `${name}.svg`), F(d));
+// MarkTeX 按钮：彩色的扩展图标，只取徽章部分
+const { badge: b } = mark();
+fs.writeFileSync(path.join(dir, 'app.svg'), svg(`${b.x0} ${b.y0} ${b.x1 - b.x0} ${b.y1 - b.y0}`));
 // 删除不再生成的旧图标
-const keep = new Set([...Object.keys(ICONS), ...Object.keys(FILLED)].map((n) => `${n}.svg`));
+const keep = new Set([...Object.keys(ICONS), ...Object.keys(FILLED), 'app'].map((n) => `${n}.svg`));
 for (const f of fs.readdirSync(dir)) if (f.endsWith('.svg') && !keep.has(f)) fs.unlinkSync(path.join(dir, f));
 console.log(`icons: ${keep.size}`);
