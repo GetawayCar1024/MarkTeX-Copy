@@ -42,7 +42,7 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 
 - PDFs still open in the browser's viewer; copying there prompts you to switch instead of copying plain text
 - The reader shares the popup's style and follows the system light / dark theme; the sidebar switches between page thumbnails, the outline and more
-- Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
+- Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX: scripts, sum limits, fractions, indexed roots, math fonts (such as `\mathbb`, `\mathcal` and `\mathfrak`), accents, binomials, labeled arrows, matrices, piecewise functions and multi-line equations. Formulas in both body text and headings are recognized; they are inferred from the layout, so please check them
 - PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes; exported on Windows or macOS) are recognized too; TeX in outline titles (scripts, fractions, roots, `\mathbb`, `\texttt`, `\text` and more) is shown as math
 - Line numbers beside code blocks and samples aren't copied (including samples typeset with LaTeX listings); tables split across pages are merged; running headers / footers and content hidden at page breaks are dropped
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
@@ -54,6 +54,10 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 - Code blocks without a language get one guessed from common patterns (C/C++, Python, Java, …)
 - Embedded images (from PDFs, and `data:` / `blob:` images on web pages) over the size limit (100 KB by default) are compressed; other images stay links
 - Doesn't work on browser pages or web stores; scanned PDFs have no text to copy
+
+## Development checks
+
+Run `node --test tools/test-pdf-math.cjs` to check PDF glyphs, rules, fonts, accents and two-dimensional formula reconstruction.
 
 ## License
 

@@ -167,12 +167,12 @@
 
   // 字体变体中的 ASCII 字母 → LaTeX 写法
   const VARIANT_CMD = {
-    bold: 'mathbf', boldItalic: 'boldsymbol', monospace: 'mathtt',
+    bold: 'mathbf', boldItalic: 'boldsymbol', monospace: 'texttt', script: 'mathscr', scriptBold: 'mathscr',
     sansSerif: 'mathsf', sansSerifBold: 'mathsf', sansSerifItalic: 'mathsf', sansSerifBoldItalic: 'mathsf',
     fraktur: 'mathfrak', frakturBold: 'mathfrak',
     texCalligraphic: 'mathcal', texCalligraphicBold: 'mathcal',
   };
-  // 拼接式的大括号、方括号等：只保留顶端部件并换成普通字符，其余部件丢弃
+  // 拼接式的大括号、方括号等：保留各部件，按其外框组合，不能丢掉下半段的高度。
   const DELIM_PARTS = {
     '⎛': '(', '⎞': ')', '⎡': '[', '⎤': ']', '⎧': '{', '⎫': '}', '⌈': '⌈', '⌉': '⌉',
     '⎜': '', '⎝': '', '⎟': '', '⎠': '', '⎢': '', '⎣': '', '⎥': '', '⎦': '', '⎨': '', '⎩': '', '⎪': '', '⎬': '', '⎭': '', '⏐': '',
@@ -186,7 +186,10 @@
 
   function glyphInfo(hit) {
     const [cp, variant, w] = hit;
-    if (cp >= 0xe000 && cp <= 0xf8ff) return null; // 私有区：可伸缩定界符的延伸部件
+    if (cp >= 0xe000 && cp <= 0xf8ff) return null; // 私有区：不可见的延伸部件
+    if ((cp >= 0x1d6a8 && cp < 0x1d6e2) || (cp >= 0x1d71c && cp <= 0x1d7cb)) {
+      return { str: String.fromCodePoint(cp).normalize('NFKC'), variant, w, cmd: 'boldsymbol' };
+    }
     // 数学字母码位（粗体、黑板粗体等）还原为“样式 + 普通字母”，便于合并成 \mathbf{MiB}
     if (cp >= 0x1d400 && cp <= 0x1d6a3) {
       const style = ALNUM_STYLES[Math.floor((cp - 0x1d400) / 52)];
@@ -201,13 +204,12 @@
     }
     let ch = String.fromCodePoint(cp);
     if (Object.prototype.hasOwnProperty.call(DELIM_PARTS, ch)) {
-      ch = DELIM_PARTS[ch];
-      if (!ch) return null;
       return { str: ch, variant, w, base: true };
     }
+    if (variant === 'script' || variant === 'scriptBold') ch = ch.normalize('NFKC');
     const info = { str: ch, variant, w };
     const cmd = VARIANT_CMD[variant];
-    if (cmd && /^[A-Za-z0-9]$/.test(ch)) info.cmd = cmd; // 如 \mathbf{x}，相邻字母之后会合并成 \mathbf{MiB}
+    if (cmd && (/^[A-Za-z0-9]$/.test(ch) || (cmd === 'texttt' && /^[\x21-\x7e]$/.test(ch)))) info.cmd = cmd;
     else if (variant === 'normal' && /^[A-Za-z]$/.test(ch)) info.upright = true; // 正体字母：函数名或 \mathrm
     return info;
   }
@@ -269,7 +271,7 @@
         if (!(scale > 0) || Math.abs(ctm[1]) > 1e-6 || Math.abs(ctm[2]) > 1e-6) continue; // 只看未旋转的路径
         const isRect = data.length === 13 && data[0] === 0 && data[3] === 1 && data[6] === 1 && data[9] === 1 && data[12] === 4;
         const filled = a[0] === OPS.fill || a[0] === OPS.eoFill;
-        if (scale > 0.05) {
+        if (Math.min(scale, Math.abs(ctm[3])) > 0.05) {
           // macOS 打印的公式字形：路径已是页面坐标
           if (filled && !isRect) {
             const g = pageGlyph(data, ctm, box, table);
@@ -278,7 +280,8 @@
           // 页面单位下的细线（填充的细矩形或描边的直线段）：可能是表格边框，也可能是 macOS 打印的分数线
           const line = a[0] === OPS.stroke && data.length === 6 && data[0] === 0 && data[3] === 1;
           if (((isRect && filled) || line) && visible(box)) strokes.push(box);
-          if (isRect && filled) pageRects.push(box);
+          // dvipdfmx / pdfTeX 的分数线、根号横线也可能是描边直线，而不是填充矩形。
+          if ((isRect && filled) || (line && Math.min(box.y1 - box.y0, box.x1 - box.x0) < 0.1)) pageRects.push(box);
           // 画出来的列表符号（Chrome 打印的 PDF）：实心圆 •、空心圆 ◦、小方块 ▪
           const w = box.x1 - box.x0;
           const h = box.y1 - box.y0;
@@ -287,6 +290,9 @@
           }
           continue;
         }
+        // 字形和横线都是填充的形状。较新的 Chromium 会把 MathJax 的 stroke-width="0" 也画成一次描边，
+        // 同一个字形因此出现两次：只看填充
+        if (!filled && a[0] !== OPS.fillStroke && a[0] !== OPS.eoFillStroke) continue;
         if (isRect) {
           rects.push({ x: ctm[4] + mm[0] * scale, x1: ctm[4] + mm[2] * scale, y0: ctm[5] + mm[1] * ctm[3], y1: ctm[5] + mm[3] * ctm[3], s: scale * 1000 });
           continue;
@@ -299,7 +305,14 @@
         const c = cs.find((e) => e.x0 === pts[0][1] && e.y0 === pts[0][2]) || cs[0];
         const info = glyphInfo([c.cp, c.variant, c.w]);
         if (!info) continue;
-        glyphs.push({ ...info, x: ctm[4], x1: ctm[4] + (info.w || mm[2]) * scale, y: ctm[5], s: scale * 1000 });
+        const s = Math.min(scale, Math.abs(ctm[3])) * 1000;
+        // MathJax 的上 / 下划线是水平方向拉伸的短横字形，不能用横向缩放估算字号。
+        if (/^[−–_¯‾]$/.test(info.str) && scale > 1.25 * Math.abs(ctm[3])) {
+          rects.push({ x: box.x0, x1: box.x1, y0: box.y0, y1: box.y1, s });
+        } else {
+          glyphs.push({ ...info, x: ctm[4], x1: ctm[4] + (info.w || mm[2]) * scale, y: ctm[5], s,
+            ink: { top: box.y1, bottom: box.y0 } });
+        }
       }
     }
     // 所有文字都画在裁剪范围内时，记下这些范围：范围之外（上下页边距中）的文字是看不见的
@@ -309,7 +322,7 @@
     for (const g of placed) {
       const c = g.cands[0];
       const info = glyphInfo([c.cp, c.variant, c.w]);
-      if (info) glyphs.push({ ...info, x: c.ox, x1: c.ox + c.w * g.kx, y: c.oy, s: 1000 * g.kx });
+      if (info) glyphs.push({ ...info, x: c.ox, x1: c.ox + c.w * g.kx, y: c.oy, s: 1000 * Math.min(g.kx, g.ky) });
     }
     const tables = findTables(strokes);
     // macOS 打印的分数线、根号横线：页面单位的细矩形，紧贴在公式字形的上方或下方，两端与这些字形（及根号）对齐。
@@ -352,7 +365,8 @@
       const s = (d.x1 - d.x0) * 3;
       return { str: d.shape, bullet: true, variant: 'bullet', x: d.x0, x1: d.x1, y: (d.y0 + d.y1) / 2 - 0.3 * s, cy: (d.y0 + d.y1) / 2, s };
     });
-    if (!glyphs.length) return { items: bullets, tables };
+    const missing = missingTexDelimiters(page, ops, OPS);
+    if (!glyphs.length) return { items: bullets.concat(missing, await texRules(page, pageRects, tables)), tables };
 
     // 横线：分数线、根号横线、上划线（细长矩形，且附近有公式字形）
     const rules = [];
@@ -381,14 +395,126 @@
     }
     const funcs = CCM.texFuncs || new Set();
     for (const g of merged) {
-      if (g.cmd) g.tex = `\\${g.cmd}{${g.str}}`;
+      if (g.cmd) {
+        const chars = Array.from(g.str).map((ch) => CCM.charTex ? CCM.charTex(ch) : ch);
+        const text = g.cmd === 'texttt' ? g.str.replace(/[{}#$%&_]/g, '\\$&').replace(/\\(?![{}#$%&_])/g, '\\textbackslash{}') :
+          CCM.texJoin ? CCM.texJoin(chars) : chars.join('');
+        g.tex = `\\${g.cmd}{${text}}`;
+      }
       else if (g.upright) {
         if (funcs.has(g.str)) g.tex = '\\' + g.str;
         else if (g.str === 'mod') g.tex = '\\bmod';
+        else if (CCM.texOperators && CCM.texOperators.has(g.str)) g.tex = `\\operatorname{${g.str}}`;
         else g.tex = g.str.length > 1 ? `\\text{${g.str}}` : `\\mathrm{${g.str}}`;
       }
     }
-    return { items: merged.concat(rules, bullets), tables };
+    return { items: merged.concat(rules, bullets, missing), tables };
+  }
+
+  // CMEX 的部分字符编码是制表符 / 换行符 / 换页符。PDF.js 的 textContent 会把它们当作空白丢掉，
+  // 但 showText 操作仍保留原字符编码和字宽。从文本矩阵恢复这些定界符，不重复提取正常文字。
+  function missingTexDelimiters(page, ops, O) {
+    const chars = { 9: '}', 10: '⟨', 11: '⟩', 12: '|', 13: '‖', 32: '(' };
+    const out = [], stack = [];
+    let m = [1, 0, 0, 1, 0, 0], t = [1, 0, 0, 1, 0, 0];
+    let font = '', size = 0, x = 0, y = 0, lx = 0, ly = 0, scale = 1, cs = 0, ws = 0, rise = 0, leading = 0;
+    for (let i = 0; i < ops.fnArray.length; i++) {
+      const fn = ops.fnArray[i], a = ops.argsArray[i];
+      if (fn === O.save) stack.push({ m, font, size, scale, cs, ws, rise, leading });
+      else if (fn === O.restore) {
+        const saved = stack.pop();
+        if (saved) ({ m, font, size, scale, cs, ws, rise, leading } = saved);
+      } else if (fn === O.transform) m = mul(m, a);
+      else if (fn === O.setFont) {
+        try { font = page.commonObjs.get(a[0]).name || ''; } catch (_) { font = ''; }
+        size = a[1];
+      } else if (fn === O.beginText) { t = [1, 0, 0, 1, 0, 0]; x = y = lx = ly = 0; }
+      else if (fn === O.setTextMatrix) { t = a; x = y = lx = ly = 0; }
+      else if (fn === O.moveText || fn === O.setLeadingMoveText) {
+        lx += a[0]; ly += a[1]; x = lx; y = ly;
+        if (fn === O.setLeadingMoveText) leading = -a[1];
+      } else if (fn === O.nextLine) { ly -= leading; x = lx; y = ly; }
+      else if (fn === O.setLeading) leading = a[0];
+      else if (fn === O.setHScale) scale = a[0] / 100;
+      else if (fn === O.setCharSpacing) cs = a[0];
+      else if (fn === O.setWordSpacing) ws = a[0];
+      else if (fn === O.setTextRise) rise = a[0];
+      else if (fn === O.showText) {
+        for (const g of a[0]) {
+          if (typeof g === 'number') { x -= g * size / 1000; continue; }
+          const width = g.width * size / 1000;
+          const ch = chars[g.originalCharCode];
+          if (ch && !g.isSpace && /^\s+$/.test(g.unicode) && /(?:^|\+)CMEX/.test(font)) {
+            const matrix = mul(m, t), s = Math.abs(size) * Math.hypot(matrix[2], matrix[3]);
+            if (Math.abs(matrix[1]) < 1e-6 && Math.abs(matrix[2]) < 1e-6) {
+              const px = matrix[0] * x * scale + matrix[4], py = matrix[3] * (y + rise) + matrix[5];
+              const top = py + 0.05 * s, bottom = py - (g.originalCharCode === 12 || g.originalCharCode === 13 ? 0.6 : g.originalCharCode === 32 ? 3 : 1.2) * s;
+              out.push({ str: ch, x: px, x1: px + Math.abs(width * matrix[0] * scale), y: (top + bottom) / 2 - 0.25 * s,
+                s, base: true, variant: 'delimiter', tall: { top, bottom } });
+            }
+          }
+          x += width + cs + (g.isSpace ? ws : 0);
+        }
+      }
+    }
+    return out;
+  }
+
+  // LaTeX 生成的 PDF：公式中的分数线、根号横线、上 / 下划线是细的实心矩形（与 MathJax 的矢量公式相同，只是文字是真正的文字）。
+  // 只取明显属于公式的：上下都有文字（分数线）、左端是根号、或一侧是数学字体的文字；属于表格、方框的除外
+  const TEX_FONT = /(?:^|\+)(CM|LM|MSAM|MSBM|EU[FSRX]|rsfs|RSFS)/;
+  const TEX_MATH_FONT = /(?:^|\+)(CMMI|CMSY|CMEX|CMBSY|CMMIB|MSAM|MSBM|EUFM|EUSM|EUEX|RSFS|rsfs|LMMath)/;
+  async function texRules(page, rects, tables) {
+    const thin = rects.filter((r) => r.y1 - r.y0 <= 1.6 && r.x1 - r.x0 >= 1.5 && r.x1 - r.x0 <= 420);
+    const vertical = rects.filter((r) => r.x1 - r.x0 <= 1.6 && r.y1 - r.y0 >= 10 && r.y1 - r.y0 <= 300);
+    if (!thin.length && !vertical.length) return [];
+    let tc;
+    try { tc = await page.getTextContent(); } catch (_) { return []; }
+    const texts = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim() || !it.fontName) continue;
+      let name = '';
+      try { const f = page.commonObjs.get(it.fontName); name = (f && f.name) || ''; } catch (_) { continue; }
+      if (!TEX_FONT.test(name)) continue;
+      const [, , c, d, e, f] = it.transform;
+      const s = Math.hypot(c, d) || 10;
+      texts.push({ x0: e, x1: e + it.width, y: f, s, math: TEX_MATH_FONT.test(name), rad: /√/.test(it.str) || (/(?:^|\+)(CMSY|CMEX)/.test(name) && /^[p-t]$/.test(it.str.trim())) });
+    }
+    if (!texts.length) return [];
+    const out = [];
+    for (const r of thin) {
+      const y = (r.y0 + r.y1) / 2;
+      if (tables.some((t) => r.x0 < t.x1 + 1 && r.x1 > t.x0 - 1 && r.y0 < t.y1 + 2 && r.y1 > t.y0 - 2)) continue;
+      // 方框（\boxed、\fbox）：两端连着竖线
+      if (rects.some((v) => v.x1 - v.x0 <= 1.6 && v.y1 - v.y0 > 3 && Math.abs(v.x0 - r.x0) < 1.5 && v.y0 < y + 1 && v.y1 > y - 1)) continue;
+      const over = (t) => Math.min(t.x1, r.x1) - Math.max(t.x0, r.x0) > 0.3 * Math.min(t.x1 - t.x0, r.x1 - r.x0);
+      const above = texts.filter((t) => over(t) && t.y > y && t.y - y < 1.6 * t.s);
+      const below = texts.filter((t) => over(t) && t.y < y && y - t.y < 1.6 * t.s);
+      const surd = texts.find((t) => t.rad && Math.abs(t.x1 - r.x0) < 0.6 * t.s && Math.abs(t.y - y) < 1.2 * t.s);
+      const near = above.concat(below);
+      if (!surd && !(above.length && below.length) && !near.some((t) => t.math)) continue;
+      const s = (surd || near[0]).s;
+      out.push({ str: '', rule: true, x: r.x0, x1: r.x1, y, s, variant: 'rule' });
+    }
+    // vmatrix 的两侧竖线也是图形：上下对齐、内部有至少两行数学内容，且没有表格 / 方框的横边。
+    const seen = new Set();
+    for (const left of vertical) for (const right of vertical) {
+      if (right.x0 <= left.x1 || Math.abs(left.y0 - right.y0) > 1 || Math.abs(left.y1 - right.y1) > 1) continue;
+      if (tables.some((t) => left.x0 >= t.x0 - 1 && right.x1 <= t.x1 + 1 && left.y0 >= t.y0 - 1 && left.y1 <= t.y1 + 1)) continue;
+      if (thin.some((h) => h.x0 <= left.x1 + 1 && h.x1 >= right.x0 - 1 &&
+        (Math.abs(h.y0 - left.y0) < 1 || Math.abs(h.y1 - left.y1) < 1))) continue;
+      const inside = texts.filter((t) => t.x0 >= left.x1 && t.x1 <= right.x0 && t.y >= left.y0 && t.y <= left.y1);
+      if (!inside.some((t) => t.math) || inside.length < 2) continue;
+      const s = Math.max(...inside.map((t) => t.s));
+      if (right.x0 - left.x1 > 40 * s || Math.max(...inside.map((t) => t.y)) - Math.min(...inside.map((t) => t.y)) < 0.5 * s) continue;
+      for (const r of [left, right]) {
+        if (seen.has(r)) continue;
+        seen.add(r);
+        out.push({ str: '|', variant: 'delimiter', base: true, x: r.x0, x1: r.x1, s,
+          y: (r.y0 + r.y1) / 2 - 0.25 * s, tall: { top: r.y1, bottom: r.y0 } });
+      }
+    }
+    return out;
   }
 
   // 由细线拼出表格网格：返回 [{ x0, x1, y0, y1, rows: [由上到下的横线 y], cols: [由左到右的竖线 x] }]

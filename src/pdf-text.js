@@ -12,7 +12,7 @@
   const SENTENCE_END = /[.。!?！？:：;；…]["”’)）\]]*$/;
   const BULLET_RE = /^([•●○◦▪▫■□‣⁃∙·▸►\-–—*∗])\s+(.*)$/;
   const BULLET_CHAR = /^[•●○◦▪▫■□‣⁃∙▸►–—∗*]$/;
-  const MONO_FONT = /mono|consol|courier|menlo|monaco|lucida\s*console|lucidaconsole|sourcecode|inconsolata|firacode|fira\s*code|jetbrains|cascadia|sfmono/i;
+  const MONO_FONT = /mono|consol|courier|menlo|monaco|lucida\s*console|lucidaconsole|sourcecode|inconsolata|firacode|fira\s*code|jetbrains|cascadia|sfmono|(?:^|\+)CMTT/i;
   // LaTeX picture 环境的绘图字体（画代码框的圆角、斜线），字形不是文字
   const PICTURE_FONT = /(^|\+)L(CIRCLE|INE)W?10$/i;
   // 没有 Unicode 映射的字形，PDF.js 给出的是控制字符
@@ -24,7 +24,10 @@
   const OTHER_ENUM_RE = /^(\(\d{1,3}\)|（\d{1,3}）|[（(][一二三四五六七八九十]+[)）]|[一二三四五六七八九十]+、|[a-zA-Z][.)]\s)/;
 
   const BIG_OPS = new Set(Array.from('∑∏∐∫∬∭∮⋃⋂⨁⨂⨀⨄⋁⋀'));
-  const LIMIT_FUNCS = new Set(['lim', 'limsup', 'liminf', 'max', 'min', 'sup', 'inf', 'det', 'gcd', 'Pr']);
+  const LIMIT_FUNCS = new Set(['lim', 'limsup', 'liminf', 'max', 'min', 'sup', 'inf', 'det', 'gcd', 'Pr', 'argmin', 'argmax']);
+  // 只在公式中出现的字体样式（黑板粗体、哥特体、花体、手写体、粗斜体）
+  const MATH_STYLE = /^(mathbb|mathfrak|mathscr|mathcal|boldsymbol)$/;
+  const GREEK_RE = /^[\u0391-\u03a9\u03b1-\u03c9\u03d1\u03d5\u03d6\u03f0\u03f1\u03f5]+$/;
   const MATH_FONT = /(^|\+)(CMMI|CMSY|CMEX|CMBSY|CMMIB|MSAM|MSBM|EUFM|EUSM|EUEX|RSFS|LMMath|LatinModernMath|STIX\w*Math|XITS\w*Math|Cambria\W?Math|TeXGyre\w*Math|NewCM\w*Math|FiraMath|Asana|MTMI|MTSY|MTEX|Euclid|MathJax)/i;
   const EXT_FONT = /(^|\+)(CMEX|EUEX|MTEX)|Extension/i;
   const ITALIC_FONT = /Italic|Oblique|(^|\+)CMTI|-It$/i;
@@ -59,21 +62,325 @@
   const copyEls = (arr) => arr.map((e) => ({ ...e }));
   const overlapX = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
 
+  // 不在 \lim、\log 等标准函数中、但常用 \operatorname 写出的函数名
+  const OPERATOR_NAMES = new Set(['lcm', 'sgn', 'rank', 'tr', 'Tr', 'diag', 'Var', 'Cov', 'Re', 'Im', 'span', 'supp', 'id', 'ord', 'rad']);
+  CCM.texOperators = OPERATOR_NAMES;
   function texStr(str) {
     str = (str || '').replace(/\s+/g, ''); // 公式里的空格没有意义（例如 "+ 1)"、"· · ·"）
     if (!str) return '';
     if (/^[·⋅]{3}$/.test(str)) return '\\cdots';
     if (/^\.{3}$/.test(str) || str === '…') return '\\ldots';
     if (FUNCS.has(str)) return '\\' + str;
+    if (str === 'mod') return '\\bmod';
+    if (str === 'argmin' || str === 'argmax') return `\\arg\\${str.slice(3)}`;
     return join(Array.from(str).map(charTex));
   }
-  const texOf = (e) => (e.atom || e.tex != null ? e.tex : texStr(e.str));
+  // 正文字体（非斜体）的字母：单个字母为 \mathrm，函数名为 \log、\operatorname{lcm} 等，其他单词为 \text
+  function uprightTex(str) {
+    const t = str.replace(/\s+/g, '');
+    if (FUNCS.has(t) || t === 'mod' || t === 'argmin' || t === 'argmax') return texStr(t);
+    if (OPERATOR_NAMES.has(t)) return `\\operatorname{${t}}`;
+    if (/^[A-Za-z]$|^[A-Z][A-Za-z]{0,2}$/.test(t)) return `\\mathrm{${t}}`;
+    return `\\text{${str.trim()}}`;
+  }
+  // 字体样式（\mathbb 等）：字母、数字直接放进命令；粗体的希腊字母、符号用 \boldsymbol
+  function styledTex(e) {
+    const t = e.str.replace(/\s+/g, '');
+    if (/^[A-Za-z0-9]+$/.test(t)) return `\\${e.style}{${t}}`;
+    if (e.style === 'mathbf' || e.style === 'boldsymbol') return `\\boldsymbol{${texStr(t)}}`;
+    return texStr(t);
+  }
+  const texOf = (e) => (e.atom || e.tex != null ? e.tex : e.style ? styledTex(e) : e.upright ? uprightTex(e.str) : texStr(e.str));
+  // 输出的整理：相邻的同一字体合并（\mathbb{A}\mathbb{B} → \mathbb{AB}），(\bmod p) → \pmod{p}
+  function tidyTex(tex) {
+    let prev;
+    do {
+      prev = tex;
+      tex = tex.replace(/\\(math(?:bb|cal|frak|scr|bf|sf|tt|rm)|boldsymbol)\{([^{}]*)\}\\\1\{([^{}]*)\}/g, '\\$1{$2$3}');
+    } while (tex !== prev);
+    return tex.replace(/\(\s*\\bmod\s*([^()]*?)\s*\)/g, (m, x) => `\\pmod{${x}}`);
+  }
+
+  // ---------- 叠放、拼接的字形 ----------
+  // 重音（叠在字母上方的单个字形；宽的来自 CMEX，或横跨几个字母的箭头、横线）
+  const ACCENTS = {
+    'ˆ': 'hat', '\u0302': 'hat', '^': 'hat', 'ˇ': 'check', '\u030c': 'check', '˜': 'tilde', '\u0303': 'tilde', '∼': 'tilde', '~': 'tilde',
+    '¯': 'bar', 'ˉ': 'bar', '\u0304': 'bar', '\u0305': 'bar', '˙': 'dot', '\u0307': 'dot', '¨': 'ddot', '\u0308': 'ddot',
+    '´': 'acute', '\u0301': 'acute', '`': 'grave', '\u0300': 'grave', '˘': 'breve', '\u0306': 'breve', '˚': 'mathring', '\u030a': 'mathring',
+    '\u20d7': 'vec', '\u20d6': 'overleftarrow', '\u20e1': 'overleftrightarrow',
+  };
+  const WIDE_ACCENT = { hat: 'widehat', tilde: 'widetilde', bar: 'overline', vec: 'overrightarrow', check: 'widecheck' };
+  // 只有组合用符号（字宽为 0）或间距重音字符的字形
+  const isAccentStr = (s) => !!s && Array.from(s).every((c) => ACCENTS[c] && c !== '^' && c !== '∼');
+  // 否定：斜线叠在关系符上
+  const NEGATED = {
+    '=': '≠', '<': '≮', '>': '≯', '≤': '≰', '≥': '≱', '∈': '∉', '∋': '∌', '⊂': '⊄', '⊃': '⊅', '⊆': '⊈', '⊇': '⊉', '≡': '≢', '∼': '≁',
+    '≅': '≇', '≈': '≉', '≃': '≄', '∣': '∤', '|': '∤', '∥': '∦', '≺': '⊀', '≻': '⊁', '→': '↛', '←': '↚', '⇒': '⇏', '⇔': '⇎', '↔': '↮',
+  };
+  const RELATION = /^[=<>≤≥∈∋⊂⊃⊆⊇≡∼≅≈≃∣|∥≺≻→←⇒⇔↔⇐⟶⟵⟹⟸⟺⊢⊨≍∝]$/;
+  // 由几个字形拼成的箭头（TeX 的 \joinrel）：−→ ⟶、⇐⇒ ⟺、↦ 的短竖 + →
+  const JOINS = [
+    [/^[−–-]+→$/, '⟶'], [/^←[−–-]+$/, '⟵'], [/^=+⇒$/, '⟹'], [/^⇐=+$/, '⟸'], [/^⇐=*⇒$/, '⟺'], [/^←[−–-]*→$/, '⟷'],
+    [/^\ue737[−–-]*→$/, '↦'], [/^\ue737[−–-]+→$/, '⟼'], [/^⟵[−–-]*→$/, '⟷'],
+  ];
+  const ARROWS = /^[→⟶←⟵⇒⟹⇐⟸↦⟼⟷⟺⇔↔]$/;
+  const X_ARROW = { '→': 'xrightarrow', '⟶': 'xrightarrow', '←': 'xleftarrow', '⟵': 'xleftarrow', '⇒': 'xRightarrow', '⟹': 'xRightarrow', '⇐': 'xLeftarrow', '⟸': 'xLeftarrow', '↦': 'xmapsto', '⟼': 'xmapsto', '⟷': 'xleftrightarrow', '↔': 'xleftrightarrow' };
+  // 拼接定界符的部件（TeX：顶、中、底和延伸部件）
+  const DELIM_PIECE = { '⎛': '(', '⎜': '(', '⎝': '(', '⎞': ')', '⎟': ')', '⎠': ')', '⎡': '[', '⎢': '[', '⎣': '[', '⎤': ']', '⎥': ']', '⎦': ']', '⎧': '{', '⎨': '{', '⎩': '{', '⎪': '{', '⎫': '}', '⎬': '}', '⎭': '}', '⏐': '|' };
+  const OPEN_DELIM = { '(': ')', '[': ']', '{': '}', '⟨': '⟩', '⌊': '⌋', '⌈': '⌉', '|': '|', '‖': '‖' };
+  const CLOSE_DELIMS = new Set(Object.values(OPEN_DELIM));
+  const MATRIX_ENV = { '(': 'pmatrix', '[': 'bmatrix', '{': 'Bmatrix', '|': 'vmatrix', '‖': 'Vmatrix' };
+  const DELIM_TEX = { '{': '\\{', '}': '\\}', '⟨': '\\langle', '⟩': '\\rangle', '⌊': '\\lfloor', '⌋': '\\rfloor', '⌈': '\\lceil', '⌉': '\\rceil', '‖': '\\|' };
+  // 字形的上下范围（基线之上为正，单位与坐标相同）
+  const topOf = (e) => (e.tall ? e.tall.top : e.isExt ? e.y + 0.05 * e.s : e.y + 0.75 * e.s);
+  const botOf = (e) => (e.tall ? e.tall.bottom : e.isExt ? e.y - (e.extH || 1.2) * e.s : e.y - 0.22 * e.s);
+  const isTall = (e) => !!e.tall || (e.isExt && (OPEN_DELIM[e.str] || CLOSE_DELIMS.has(e.str)) && (e.extH || 1.2) >= 1.1);
+  const midX = (e) => (e.x0 + e.x1) / 2;
+
+  // 预处理：拼接定界符、否定斜线、拼接箭头（就地修改元素表，返回新的元素表）
+  function preprocess(els, delimitersOnly = false) {
+    let list = els.slice();
+    // 1) 拼接定界符：同一列、上下相接的部件合成一个高的定界符
+    const pieces = list.filter((e) => !e.atom && (DELIM_PIECE[(e.str || '').trim()] || /^[|∣‖]$/.test(e.str)));
+    const groups = [];
+    for (const p of pieces.sort((a, b) => b.y - a.y)) {
+      const ch = DELIM_PIECE[p.str.trim()] || (p.str === '‖' ? '‖' : '|');
+      const g = groups.find((q) => q.ch === ch && overlapX(q, p) > 0.3 * Math.min(q.x1 - q.x0, p.x1 - p.x0) &&
+        Math.abs(q.items[0].y - p.y) > 0.1 * p.s && q.bottom - topOf(p) < 1.2 * p.s);
+      if (g) { g.items.push(p); g.bottom = Math.min(g.bottom, botOf(p)); g.x0 = Math.min(g.x0, p.x0); g.x1 = Math.max(g.x1, p.x1); }
+      else groups.push({ ch, items: [p], top: topOf(p), bottom: botOf(p), x0: p.x0, x1: p.x1, s: p.s });
+    }
+    for (const g of groups) {
+      if (g.items.length === 1 && !DELIM_PIECE[g.items[0].str]) continue;
+      list = list.filter((e) => !g.items.includes(e));
+      list.push({ ...g.items[0], str: g.ch, x0: g.x0, x1: g.x1, y: g.bottom + 0.5 * (g.top - g.bottom) - 0.25 * g.s, s: g.s, isExt: false, base: true, tall: { top: g.top, bottom: g.bottom } });
+    }
+    if (delimitersOnly) return list;
+    // 2) 否定：斜线（组合用的 U+0338，或叠在关系符上的 /）
+    for (const sl of list.filter((e) => !e.atom && (e.str === '\u0338' || e.str === '/'))) {
+      const rel = list.find((r) => r !== sl && !r.atom && RELATION.test((r.str || '').trim()) && Math.abs(r.y - sl.y) < 0.35 * r.s &&
+        (sl.x1 - sl.x0 < 0.05 * r.s ? sl.x0 >= r.x0 - 0.15 * r.s && sl.x0 <= r.x1 : overlapX(sl, r) > 0.4 * Math.min(sl.x1 - sl.x0, r.x1 - r.x0)));
+      if (!rel) continue;
+      const ch = rel.str.trim();
+      rel.str = NEGATED[ch] || ch;
+      if (!NEGATED[ch]) rel.tex = `\\not${texStr(ch)}`;
+      list = list.filter((e) => e !== sl);
+    }
+    // 3) 拼接箭头：同一基线上紧贴（或互相重叠）的 −、→ 等
+    list.sort((a, b) => a.x0 - b.x0);
+    for (let i = 0; i < list.length; i++) {
+      const a = list[i];
+      if (a.atom || !/^[−–\-=←⇐\ue737⟵]$/.test((a.str || '').trim())) continue;
+      let run = [a];
+      for (let j = i + 1; j < list.length; j++) {
+        const b = list[j];
+        const last = run[run.length - 1];
+        if (b.atom || Math.abs(b.y - a.y) > 0.15 * a.s || Math.abs(b.s - a.s) > 0.2 * a.s || b.x0 - last.x1 > 0.12 * a.s) {
+          if (Math.abs(b.y - a.y) > 0.15 * a.s && b.x0 < last.x1) continue; // 另一行（如箭头上方的标注）
+          break;
+        }
+        run.push(b);
+        if (!/^[−–\-=]$/.test((b.str || '').trim())) break;
+      }
+      if (run.length < 2) continue;
+      const seq = run.map((e) => e.str.trim()).join('');
+      const hit = JOINS.find(([re]) => re.test(seq));
+      if (!hit) continue;
+      const joined = { ...a, str: hit[1], x1: Math.max(...run.map((e) => e.x1)), tex: undefined };
+      list = list.filter((e) => !run.includes(e));
+      list.splice(i, 0, joined);
+    }
+    // 4) 单独的 \mapsto 短竖（其后的箭头不在同一元素表中）按 ↦ 输出
+    for (const e of list) if (e.str === '\ue737') e.str = '↦';
+    // 5) 逐字拆开的省略号：同一基线上等距的三个点合成 ⋯ / …
+    list.sort((a, b) => a.x0 - b.x0);
+    for (let i = 0; i + 2 < list.length; i++) {
+      const run = list.slice(i, i + 3);
+      if (!run.every((e) => !e.atom && /^[.·⋅]$/.test((e.str || '').trim()) && Math.abs(e.y - run[0].y) < 0.1 * e.s)) continue;
+      if (run[2].x0 - run[0].x1 > 1.6 * run[0].s) continue;
+      const centered = run[0].str.trim() !== '.';
+      list.splice(i, 3, { ...run[0], str: centered ? '⋯' : '…', x1: run[2].x1, tex: undefined });
+    }
+    return list;
+  }
+
+  // 重音与上方的箭头、横线：返回生成的原子
+  function accentAtoms(els, used, depth, s) {
+    const atoms = [];
+    const free = () => els.filter((e) => !used.has(e));
+    const accentOf = (e) => {
+      if (e.atom || e.rule) return null;
+      const t = (e.str || '').trim();
+      if (isAccentStr(t) || t === '~' || t === '∼') return ACCENTS[Array.from(t)[0]];
+      return null;
+    };
+    // 1) 重音字形：盖住的字母（中线在重音范围内；CMEX 的宽重音盖住其后紧接着的几个字母）
+    for (const a of els.filter((e) => accentOf(e) && !used.has(e))) {
+      const cmd = accentOf(a);
+      const wide = a.isExt || EXT_FONT.test(a.font || '') || /texSize[2-4]/.test(a.font || '');
+      const under = free().filter((b) => b !== a && !accentOf(b) && !b.rule && b.s >= 0.6 * a.s &&
+        (!/^[~∼]$/.test(a.str) || a.y > b.y + 0.15 * b.s) &&
+        a.y >= b.y - 0.15 * b.s && a.y <= b.y + 1.1 * b.s && !(b.isExt && !b.atom));
+      let base;
+      if (wide) {
+        const sorted = under.filter((b) => b.x1 > a.x0 - 0.1 * a.s).sort((p, q) => p.x0 - q.x0);
+        base = [];
+        for (const b of sorted) {
+          const last = base[base.length - 1];
+          if (!base.length ? b.x0 > a.x0 + 0.6 * a.s : b.x0 - last.x1 > 0.15 * a.s || Math.abs(b.y - last.y) > 0.3 * a.s) break;
+          base.push(b);
+        }
+      } else {
+        const w = Math.max(a.x1 - a.x0, 0.3 * a.s);
+        const c = a.x1 - a.x0 < 0.05 * a.s ? a.x0 - 0.25 * a.s : midX(a); // 宽度为 0 的组合符号画在前一个字母上
+        base = under.filter((b) => Math.abs(midX(b) - c) < Math.max(0.5 * w, 0.5 * (b.x1 - b.x0)) + 0.1 * a.s);
+        if (base.length > 1) base = [base.reduce((p, q) => (Math.abs(midX(p) - c) <= Math.abs(midX(q) - c) ? p : q))];
+      }
+      if (!base.length) continue;
+      used.add(a);
+      base.forEach((b) => used.add(b));
+      const inner = parseMath(copyEls(base), depth + 1);
+      const name = base.length > 1 || wide ? WIDE_ACCENT[cmd] || cmd : cmd;
+      const b0 = base[0];
+      atoms.push({ atom: true, base: true, tex: `\\${name}{${inner}}`, x0: Math.min(...base.map((b) => b.x0)), x1: Math.max(...base.map((b) => b.x1)), y: b0.y, s: b0.s });
+    }
+    // 2) 上方的箭头、横线（\overrightarrow、\overline），下方的横线（\underline）：盖住的内容在其下方 / 上方
+    for (const a of free().filter((e) => !e.atom && !e.rule && (ARROWS.test((e.str || '').trim()) || /^[−–‾¯_]$/.test((e.str || '').trim())))) {
+      const t = a.str.trim();
+      const bar = /^[−–‾¯_]$/.test(t);
+      const inX = (b) => midX(b) > a.x0 - 0.1 * a.s && midX(b) < a.x1 + 0.1 * a.s;
+      const below = free().filter((b) => b !== a && inX(b) && !b.rule && b.y < a.y - 0.45 * a.s && b.y > a.y - 1.8 * a.s);
+      const above = bar ? free().filter((b) => b !== a && inX(b) && !b.rule && b.y > a.y + 0.3 * a.s && b.y < a.y + 1.4 * a.s) : [];
+      const content = below.length ? below : above;
+      if (!content.length || (a.x1 - a.x0) < 0.6 * Math.min(...content.map((b) => b.x1 - b.x0))) continue;
+      // 内容应当大致被盖满（横线、箭头至少有内容宽度的一半）
+      const cx0 = Math.min(...content.map((b) => b.x0));
+      const cx1 = Math.max(...content.map((b) => b.x1));
+      if (a.x1 - a.x0 < 0.5 * (cx1 - cx0)) continue;
+      used.add(a);
+      content.forEach((b) => used.add(b));
+      const inner = parseMath(copyEls(content), depth + 1);
+      const cmd = !below.length ? 'underline' : bar ? 'overline' : /^[←⟵]$/.test(t) ? 'overleftarrow' : /^[↔⟷]$/.test(t) ? 'overleftrightarrow' : 'overrightarrow';
+      const by = baselineOf(content, refSize(content));
+      atoms.push({ atom: true, base: true, tex: `\\${cmd}{${inner}}`, x0: Math.min(cx0, a.x0), x1: Math.max(cx1, a.x1), y: by, s: refSize(content) });
+    }
+    return atoms;
+  }
+
+  // 叠在符号上方 / 下方的小字号标注：\overset、\underset、\xrightarrow
+  function stackAtoms(els, used, depth, s) {
+    const atoms = [];
+    const free = els.filter((e) => !used.has(e) && !e.rule);
+    const bases = free.filter((e) => e.s >= 0.85 * s && !isTall(e) && !e.atom && RELATION.test((e.str || '').trim()));
+    for (const b of bases) {
+      if (used.has(b)) continue;
+      const small = free.filter((e) => e !== b && !used.has(e) && e.s < 0.85 * b.s);
+      const label = (side) => {
+        const cand = small.filter((e) => (side > 0 ? vy(e) > b.y + 0.45 * b.s && vy(e) < b.y + 1.6 * b.s : vy(e) < b.y - 0.3 * b.s && vy(e) > b.y - 1.5 * b.s) &&
+          e.x1 > b.x0 - 0.6 * b.s && e.x0 < b.x1 + 0.6 * b.s);
+        if (!cand.length) return null;
+        const x0 = Math.min(...cand.map((e) => e.x0));
+        const x1 = Math.max(...cand.map((e) => e.x1));
+        // 标注的中线与符号的中线对齐（上标在符号右侧，不会对齐）
+        if (Math.abs((x0 + x1) / 2 - midX(b)) > 0.3 * Math.max(x1 - x0, b.x1 - b.x0) || x0 > b.x0 + 0.6 * (b.x1 - b.x0)) return null;
+        return cand;
+      };
+      const up = label(1);
+      const down = label(-1);
+      if (!up && !down) continue;
+      const t = b.str.trim();
+      const tex = (arr) => parseMath(copyEls(arr), depth + 1);
+      let out;
+      if (X_ARROW[t] || ARROWS.test(t)) out = `\\${X_ARROW[t] || 'xrightarrow'}${down ? `[${tex(down)}]` : ''}{${up ? tex(up) : ''}}`;
+      else if (up && down) out = `\\overset{${tex(up)}}{\\underset{${tex(down)}}{${texOf(b)}}}`;
+      else out = `\\${up ? 'overset' : 'underset'}{${tex(up || down)}}{${texOf(b)}}`;
+      [b, ...(up || []), ...(down || [])].forEach((e) => used.add(e));
+      atoms.push({ atom: true, base: true, tex: out, x0: b.x0, x1: b.x1, y: b.y, s: b.s });
+    }
+    return atoms;
+  }
+
+  // 矩阵、cases、\binom：两个高的定界符（或只有左边的大括号）之间有两行以上的内容
+  function matrixAtoms(els, used, depth, s) {
+    const atoms = [];
+    const free = () => els.filter((e) => !used.has(e) && !e.rule);
+    const opens = free().filter((e) => !e.atom && isTall(e) && OPEN_DELIM[(e.str || '').trim()]).sort((a, b) => a.x0 - b.x0);
+    for (const L of opens) {
+      if (used.has(L)) continue;
+      const lc = L.str.trim();
+      const top = topOf(L);
+      const bottom = botOf(L);
+      const h = top - bottom;
+      const R = free().filter((e) => e !== L && !e.atom && isTall(e) && e.x0 >= L.x1 - 0.1 * s && e.str.trim() === OPEN_DELIM[lc] &&
+        Math.abs((topOf(e) + botOf(e)) / 2 - (top + bottom) / 2) < 0.35 * h).sort((a, b) => a.x0 - b.x0)[0];
+      if (!R && lc !== '{') continue;
+      const x1 = R ? R.x0 : Infinity;
+      const inside = free().filter((e) => e !== L && e !== R && midX(e) > L.x1 && midX(e) < x1 && vy(e) < top && vy(e) > bottom - 0.2 * s);
+      // cases：大括号右侧、竖直范围内的内容（直到遇到不在范围内的内容为止）
+      const body = R ? inside : inside.filter((e) => e.x0 < L.x1 + 30 * s);
+      const rowSize = Math.max(...body.map((e) => e.s));
+      const main = body.filter((e) => e.s >= 0.85 * rowSize);
+      if (main.length < 2) continue;
+      // 行：主体字符的基线相近的分为一行
+      const rows = [];
+      for (const e of [...main].sort((a, b) => b.y - a.y)) {
+        const y = e.atom ? e.y : vy(e);
+        const r = rows.find((q) => Math.abs(q.y - y) < 0.45 * s);
+        if (r) r.items.push(e); else rows.push({ y, items: [e] });
+      }
+      if (rows.length < 2) continue;
+      // 小字号的内容（上下标）归入最近的行
+      for (const e of body.filter((x) => !main.includes(x))) {
+        const r = rows.reduce((p, q) => (Math.abs(q.y - vy(e)) < Math.abs(p.y - vy(e)) ? q : p));
+        r.items.push(e);
+      }
+      rows.sort((a, b) => b.y - a.y);
+      // 列：行内相隔超过约 0.7em 的为不同的列
+      const cells = rows.map((r) => {
+        const sorted = r.items.sort((a, b) => a.x0 - b.x0);
+        const out = [];
+        for (const e of sorted) {
+          const last = out[out.length - 1];
+          if (last && e.x0 - last.x1 < 0.7 * s) { last.items.push(e); last.x1 = Math.max(last.x1, e.x1); }
+          else out.push({ items: [e], x0: e.x0, x1: e.x1 });
+        }
+        return out;
+      });
+      const cols = Math.max(...cells.map((c) => c.length));
+      // 列数不同的行按列的位置对齐（以列最多的行为准）
+      const ref = cells.find((c) => c.length === cols);
+      const grid = cells.map((c) => {
+        if (c.length === cols) return c.map((cell) => cell.items);
+        const row = Array.from({ length: cols }, () => []);
+        for (const cell of c) {
+          const m = (cell.x0 + cell.x1) / 2;
+          let k = 0;
+          for (let j = 1; j < cols; j++) if (Math.abs((ref[j].x0 + ref[j].x1) / 2 - m) < Math.abs((ref[k].x0 + ref[k].x1) / 2 - m)) k = j;
+          row[k].push(...cell.items);
+        }
+        return row;
+      });
+      [L, R, ...body].filter(Boolean).forEach((e) => used.add(e));
+      const texRows = grid.map((row) => row.map((items) => (items.length ? parseMath(copyEls(items), depth + 1) : '')));
+      let tex;
+      if (lc === '(' && R && cols === 1 && texRows.length === 2) tex = `\\binom{${texRows[0][0]}}{${texRows[1][0]}}`;
+      else {
+        const env = R ? MATRIX_ENV[lc] || 'matrix' : 'cases';
+        const inner = texRows.map((r) => r.join(' & ')).join(' \\\\ ');
+        tex = `\\begin{${env}} ${inner} \\end{${env}}`;
+        if (R && !MATRIX_ENV[lc]) tex = `\\left${DELIM_TEX[lc] || lc} ${tex} \\right${DELIM_TEX[R.str.trim()] || R.str.trim()}`;
+      }
+      const xs = [L, R, ...body].filter(Boolean);
+      atoms.push({ atom: true, base: true, tex, x0: Math.min(...xs.map((e) => e.x0)), x1: Math.max(...xs.map((e) => e.x1)), y: (top + bottom) / 2 - 0.25 * s, s });
+    }
+    return atoms;
+  }
 
   const RADICALS = new Set(Array.from('√∛∜'));
   const isRad = (e) => !e.atom && RADICALS.has((e.str || '').trim());
   // “虚拟基线”：TeX 的大型运算符（CMEX）和根号（CMSY √）的基线在字形顶部，字形向下悬挂
   // MathJax 字形（geo）的坐标是真实基线，不需要修正
-  const vy = (e) => (e.atom || e.geo ? e.y : e.isExt ? e.y - 0.9 * e.s : isRad(e) ? e.y - 0.84 * e.s : e.y);
+  const vy = (e) => (e.rule ? e.anchorY ?? e.y - 0.25 * e.s : e.atom || e.geo ? e.y : e.isExt ? e.y - 0.9 * e.s : isRad(e) ? e.y - 0.84 * e.s : e.y);
 
   function refSize(els) {
     const sizes = els.filter((e) => !e.isExt && !isRad(e)).map((e) => e.s);
@@ -84,6 +391,9 @@
     let pool = els.filter((e) => !e.isExt && !e.atom && !isRad(e) && e.s >= 0.85 * s);
     if (!pool.length) pool = els.filter((e) => !e.isExt && !isRad(e));
     if (!pool.length) return vy(els[0]);
+    // 分子、分母可能比分式所在主行更长。正常字号的关系符位于数学轴对应的主基线，不能把整条等式当成上标。
+    const relations = pool.filter((e) => RELATION.test((e.str || '').trim()));
+    if (relations.length) pool = relations;
     let best = null;
     for (const e of pool) {
       const w = pool.filter((o) => Math.abs(o.y - e.y) < 0.15 * s).reduce((a, o) => a + (o.str ? o.str.length : 2), 0);
@@ -125,9 +435,10 @@
   }
 
   function parseMath(input, depth = 0) {
-    const els = input.filter((e) => e.atom || e.rule || (e.str && e.str.trim()));
+    let els = input.filter((e) => e.atom || e.rule || (e.str && e.str.trim()));
     if (!els.length || els.every((e) => e.rule)) return '';
     if (depth > 8) return join([...els].filter((e) => !e.rule).sort((a, b) => a.x0 - b.x0).map(texOf));
+    els = preprocess(els);
     const s = refSize(els.filter((e) => !e.rule));
     const used = new Set();
     const atoms = [];
@@ -144,8 +455,9 @@
         // 被开方数：横线下方、不低于根号的基线（再往下是外层分数的分母等）
         const body = pool().filter((e) => e !== surd && within(e) && vy(e) < r.y && vy(e) > r.y - 3 * sz && (!surd.geo || vy(e) > surd.y - 0.5 * sz));
         // 根指数：根号左上方的小字号内容
+        const rootY = body.length ? baselineOf(body, refSize(body)) : vy(surd);
         const index = pool().filter((e) => e !== surd && !body.includes(e) && e.s < 0.8 * surd.s &&
-          e.x1 <= surd.x0 + 0.6 * surd.s && e.x0 >= surd.x0 - 1.2 * surd.s && vy(e) > surd.y);
+          e.x1 <= surd.x0 + 0.8 * surd.s && e.x0 >= surd.x0 - 1.2 * surd.s && vy(e) > rootY + 0.15 * surd.s);
         [surd, ...body, ...index].forEach((e) => used.add(e));
         const idx = index.length ? `[${parseMath(copyEls(index), depth + 1)}]` : '';
         const bodyY = body.length ? baselineOf(body, refSize(body)) : r.y - 0.8 * sz;
@@ -158,11 +470,14 @@
       [...num, ...den].forEach((e) => used.add(e));
       let tex;
       if (num.length && den.length) tex = `\\frac{${parseMath(copyEls(num), depth + 1)}}{${parseMath(copyEls(den), depth + 1)}}`;
-      else if (num.length) tex = `\\overline{${parseMath(copyEls(num), depth + 1)}}`;
-      else tex = `\\underline{${parseMath(copyEls(den), depth + 1)}}`;
+      else if (num.length) tex = `\\underline{${parseMath(copyEls(num), depth + 1)}}`;
+      else tex = `\\overline{${parseMath(copyEls(den), depth + 1)}}`;
       // 数学轴在基线之上约 0.25em：分数的“基线”取横线下方 0.25em
       atoms.push({ atom: true, tex, x0: r.x0, x1: r.x1, y: num.length && den.length ? r.y - 0.25 * sz : baselineOf(num.concat(den), sz), s: sz });
     }
+
+    // 0.5) 重音、上方的箭头与横线
+    atoms.push(...accentAtoms(pool(), used, depth, s));
 
     // 1) 带上下限的大型运算符（上下限与运算符水平重叠，位于其上方 / 下方）；
     //    行间公式中的 \max、\min、\lim 等的下限也写在正下方
@@ -170,7 +485,7 @@
       if (used.has(op) || op.atom) continue;
       const name = op.str.trim();
       const big = Array.from(name).length === 1 && BIG_OPS.has(name);
-      if (!big && !LIMIT_FUNCS.has(name)) continue;
+      if (!big && !LIMIT_FUNCS.has(name.replace(/\s+/g, ''))) continue;
       const cy = op.isExt ? op.y - 0.65 * op.s : op.y + 0.3 * op.s;
       const lims = els.filter((e) => e !== op && !used.has(e) && !e.atom && e.s < op.s * 0.92 &&
         overlapX(e, op) > 0.25 * Math.min(e.x1 - e.x0, op.x1 - op.x0) && Math.abs(e.y - cy) < 2.8 * op.s &&
@@ -203,6 +518,10 @@
       });
     }
 
+    // 1.5) 叠在符号上方 / 下方的标注（\overset、\xrightarrow 等）；1.7) 矩阵、cases、\binom
+    atoms.push(...stackAtoms(pool(), used, depth, s));
+    atoms.push(...matrixAtoms(pool(), used, depth, s));
+
     // 2) 分式：上下两段字号相近、水平居中对齐、中间没有其他内容（分数线是图形，不在文字里）
     for (let guard = 0; guard < 24; guard++) {
       const cand = pool();
@@ -221,8 +540,8 @@
           const x1 = Math.max(U.x1, L.x1);
           if (segs.some((M) => M !== U && M !== L && M.y < U.y - 0.25 * M.s && M.y > L.y + 0.25 * M.s &&
             M.x1 > x0 + 0.05 * sz && M.x0 < x1 - 0.05 * sz)) continue;
-          // 紧贴在某个字符右侧、上下叠放的小字号是上下标，不是分式
-          if (sz < 0.85 * s && cand.some((b) => !b.atom && b.s >= 0.85 * s && b.x1 <= x0 + 0.05 * s && x0 - b.x1 < 0.05 * s &&
+          // 紧贴在某个字符右侧、上下叠放的小字号是上下标，不是分式（左括号之后的除外，如 \binom）
+          if (sz < 0.85 * s && cand.some((b) => !b.atom && b.s >= 0.85 * s && !OPEN_DELIM[(b.str || '').trim()] && b.x1 <= x0 + 0.05 * s && x0 - b.x1 < 0.05 * s &&
             b.y < U.y && b.y > L.y)) continue;
           if (!best || dy < best.dy) best = { U, L, dy, x0, x1, sz };
         }
@@ -249,6 +568,15 @@
     // 3) 按水平顺序输出：偏离基线的小字号作为上下标（递归处理嵌套），根号吸收其后的被开方数
     const rest = pool().sort((a, b) => a.x0 - b.x0);
     const B = baselineOf(rest, s);
+    // 成对的高定界符输出为 \left … \right
+    const stack = [];
+    for (const e of rest) {
+      if (e.atom || !isTall(e)) continue;
+      const t = e.str.trim();
+      const top = stack[stack.length - 1];
+      if (top && OPEN_DELIM[top.str.trim()] === t) { stack.pop(); top.tex = `\\left${DELIM_TEX[top.str.trim()] || top.str.trim()}`; e.tex = `\\right${DELIM_TEX[t] || t}`; }
+      else if (OPEN_DELIM[t]) stack.push(e);
+    }
     const out = [];
     let i = 0;
     while (i < rest.length) {
@@ -262,7 +590,7 @@
           while (i < rest.length) {
             const e = rest[i];
             if (isBaseEl(e, B, s)) {
-              if (e.atom || isRad(e) || !/^[A-Za-z0-9.]+$/.test(e.str.replace(/\s+/g, ''))) break;
+              if (e.atom || isRad(e) || !/^[A-Za-z0-9.\u0370-\u03ff\u{1d400}-\u{1d7ff}]+$/u.test(e.str.replace(/\s+/g, ''))) break;
               body.push(e);
               i++;
             } else if (body.length) {
@@ -290,7 +618,7 @@
       }
       out.push(tex);
     }
-    return join(out).trim();
+    return tidyTex(join(out).trim());
   }
 
   // 多行公式（对齐环境）：行首是关系符的放在左列
@@ -362,9 +690,186 @@
       if (span.contains(range.startContainer)) st = textOffsetIn(span, range.startContainer, range.startOffset) ?? 0;
       if (span.contains(range.endContainer)) en = textOffsetIn(span, range.endContainer, range.endOffset) ?? str.length;
       if (en <= st) return;
-      pieces.push(toPiece(item, span.__ccmPage, st, en, order));
+      pieces.push(...toPieces(item, span.__ccmPage, st, en, order));
     });
     return pieces.length ? pieces : null;
+  }
+
+  // ---------- TeX 字体中的字符 ----------
+  // pdfTeX 嵌入的 CM 字体通常没有 ToUnicode，PDF.js 按字形名称解码，不认识的名称只剩字符编码（OMX 中的大括号等是控制字符）；
+  // xdvipdfmx 生成的 ToUnicode 也会把部分字形（否定斜线、取整符号等）映射为编码本身的 ASCII 字符。按字体的编码表还原：
+  // OMS（CMSY 等）、OMX（CMEX 等）的 0x00–0x7F。U+E737 是 \mapsto 左端的短竖（与其后的 → 合成 ↦），'' 表示丢弃的拼接部件
+  const OMS = Array.from('−⋅×∗÷⋄±∓⊕⊖⊗⊘⊙◯∘∙≍≡⊆⊇≤≥⪯⪰∼≈⊂⊃≪≫≺≻←→↑↓↔↗↘≃⇐⇒⇑⇓⇔↖↙∝′∞∈∋△▽\u0338\ue737∀∃¬∅ℜℑ⊤⊥ℵABCDEFGHIJKLMNOPQRSTUVWXYZ∪∩⊎∧∨⊢⊣⌊⌋⌈⌉{}⟨⟩|‖↕⇕\\≀√⨿∇∫⊔⊓⊑⊒§†‡¶♣♢♡♠');
+  const OMX = Array.from('()[]⌊⌋⌈⌉{}⟨⟩|‖/\\()()[]⌊⌋⌈⌉{}⟨⟩/\\()[]⌊⌋⌈⌉{}⟨⟩/\\/\\⎛⎞⎡⎤⎣⎦⎢⎥⎧⎫⎩⎭⎨⎬⎪⏐⎝⎠⎜⎟⟨⟩⨆⨆∮∮⨀⨀⨁⨁⨂⨂∑∏∫⋃⋂⨄⋀⋁∑∏∫⋃⋂⨄⋀⋁∐∐\u0302\u0302\u0302\u0303\u0303\u0303[]⌊⌋⌈⌉{}√√√√√\0\0‖↑↓\0\0\0\0⇑⇓')
+    .map((c) => (c === '\0' ? '' : c));
+  // OMX 中每个编码的字形高度（em，用于判断“高的”定界符，如矩阵两侧的括号）
+  const omxHeight = (code) => (code < 0x10 ? 1.2 : code < 0x12 ? 1.8 : code < 0x20 ? 2.4 : code < 0x2e ? 3 : code < 0x30 ? 1.8
+    : code < 0x46 ? 1.8 : code < 0x62 ? 1.4 : code < 0x68 ? 0.3 : code < 0x70 ? 1.8 : [1.2, 1.8, 2.4, 3][code - 0x70] || 1.2);
+  // OT1（CMR 等）中的重音与大写希腊字母
+  const OT1 = { 0: 'Γ', 1: 'Δ', 2: 'Θ', 3: 'Λ', 4: 'Ξ', 5: 'Π', 6: 'Σ', 7: 'Υ', 8: 'Φ', 9: 'Ψ', 10: 'Ω', 0x12: '`', 0x13: '´', 0x14: 'ˇ', 0x15: '˘', 0x16: '¯', 0x17: '˚', 0x5e: 'ˆ', 0x5f: '˙', 0x7d: '˝', 0x7e: '˜', 0x7f: '¨' };
+  // PDF.js 按 Adobe 字形表解码的字符中，与数学写法不同的：∆（INCREMENT）、Ω（OHM）、µ（MICRO）
+  // TeX 字体中的尖括号可能被解码为 U+2329 / U+3008（后者是中文标点）
+  const UNI_FIX = { '\u2206': 'Δ', '\u2126': 'Ω', '\u00b5': 'μ', '\u2329': '⟨', '\u232a': '⟩', '\u3008': '⟨', '\u3009': '⟩' };
+  const TEX_FONT_FAMILY = /(?:^|\+)(CMSY|CMBSY|LMMathSymbols|CMEX|LMMathExtension|EUEX|CMMIB?|LMMathItalic|CMR|CMBX|CMSL|CMTI|CMSS|CMTT|LMRoman|LMSans|LMMono|MSBM|MSAM|EUFM|EUSM|EURM|EURB|RSFS|rsfs)/i;
+  // 字体决定的样式：黑板粗体、哥特体、花体、手写体（CMSY 的大写字母）、粗体、粗斜体、无衬线
+  function fontStyle(font) {
+    if (/(?:^|\+)MSBM/i.test(font)) return 'mathbb';
+    if (/(?:^|\+)EUF[MB]/i.test(font)) return 'mathfrak';
+    if (/(?:^|\+)RSFS/i.test(font)) return 'mathscr';
+    if (/(?:^|\+)(EUSM|EUSB)/i.test(font)) return 'mathcal';
+    if (/(?:^|\+)(CMMIB|CMBSY)/i.test(font)) return 'boldsymbol';
+    if (/(?:^|\+)(CMBX|LMRomanDemi|LMRoman\d+-Bold)/i.test(font)) return 'mathbf';
+    if (/(?:^|\+)(CMSS|LMSans)/i.test(font)) return 'mathsf';
+    return '';
+  }
+  // 字体信息：字符编码 → 字宽（字形空间单位）。PDF.js 的字体对象（fontExtraProperties）带有 widths；
+  // 它的 defaultEncoding 只是标准编码，不是 CM 字体真正的字形名称，不能用来判断字符是否解码正确
+  const fontInfoCache = new WeakMap();
+  function fontInfo(pn, fontName) {
+    const info = CCM.pdfPages && CCM.pdfPages[pn];
+    let f = null;
+    try { f = info && info.page.commonObjs.get(fontName); } catch (_) { return null; }
+    if (!f || f.composite || !Array.isArray(f.widths)) return null;
+    if (!fontInfoCache.has(f)) fontInfoCache.set(f, { widths: f.widths });
+    return fontInfoCache.get(f);
+  }
+  const GREEK_OML = Array.from('ΓΔΘΛΞΠΣΥΦΨΩαβγδϵζηθικλμνξπρστυϕχψωεϑϖϱςφ');
+  // OML 中 ASCII 位置上的特殊字形（这些 ASCII 字符不会是 CMMI 正确解码的结果）
+  const OML_ASCII = { '~': '\u20d7', '@': '∂', '`': 'ℓ', '{': 'ı', '|': 'ȷ', '}': '℘', '[': '♭', '\\': '♮', ']': '♯', '^': '⌣', '_': '⌢', '?': '⋆', '=': '/' };
+  // CMEX 中的 ASCII 标点：可能是正确解码的定界符（xdvipdfmx），也可能只是编码（pdfTeX）。按字宽取最接近的
+  const EXT_FAMILY = {
+    '(': [0x00, 0x10, 0x12, 0x20], ')': [0x01, 0x11, 0x13, 0x21], '[': [0x02, 0x14, 0x22, 0x68], ']': [0x03, 0x15, 0x23, 0x69],
+    '{': [0x08, 0x1a, 0x28, 0x6e], '}': [0x09, 0x1b, 0x29, 0x6f], '/': [0x0e, 0x1e, 0x2c, 0x2e], '\\': [0x0f, 0x1f, 0x2d, 0x2f], '|': [0x0c],
+  };
+  // Adobe Symbol / xdvipdfmx 对拼接括号使用的私用区码位。
+  const TEX_DELIM_PUA = {
+    '\uf8eb': '⎛', '\uf8ec': '⎜', '\uf8ed': '⎝', '\uf8ee': '⎡', '\uf8ef': '⎢', '\uf8f0': '⎣',
+    '\uf8f1': '⎧', '\uf8f2': '⎨', '\uf8f3': '⎩', '\uf8f4': '⎪', '\uf8f6': '⎞', '\uf8f7': '⎟',
+    '\uf8f8': '⎠', '\uf8f9': '⎤', '\uf8fa': '⎥', '\uf8fb': '⎦', '\uf8fc': '⎫', '\uf8fd': '⎬', '\uf8fe': '⎭',
+  };
+  // 字符在 TeX 字体中的编码（查字宽用；不知道时为 -1）。w：测得的宽度（字形空间单位）
+  function texCode(ch, family, fi, w) {
+    const k = ch.length === 1 ? ch.charCodeAt(0) : -1;
+    if (/^(CMSY|CMBSY|LMMathSymbols)/i.test(family)) return k >= 0 && k < 0x80 ? k : OMS.indexOf(ch);
+    if (/^(CMEX|LMMathExtension|EUEX)/i.test(family)) {
+      const list = EXT_FAMILY[ch] ? [k, ...EXT_FAMILY[ch]] : k >= 0 && k < 0x80 ? [k] : OMX.map((c, i) => (c === ch ? i : -1)).filter((i) => i >= 0);
+      if (!list.length) return -1;
+      if (!(w > 0) || !fi) return list[list.length > 1 && EXT_FAMILY[ch] ? 1 : 0];
+      return list.reduce((b, c) => (Math.abs((fi.widths[c] || 0) - w) < Math.abs((fi.widths[b] || 0) - w) ? c : b), list[0]);
+    }
+    if (/^(CMMI|LMMathItalic)/i.test(family)) {
+      if (k >= 0 && k < 0x80) return k;
+      const g = GREEK_OML.indexOf(ch);
+      if (g >= 0) return g;
+      const o = Object.keys(OML_ASCII).find((c) => OML_ASCII[c] === ch);
+      return o ? o.charCodeAt(0) : -1;
+    }
+    if (k >= 0 && k < 0x80) return k;
+    const o = Object.keys(OT1).find((c) => OT1[c] === ch);
+    return o != null ? +o : -1;
+  }
+  // 按编码表还原一个字符；返回 { ch, style?, ext? }（ext：OMX 字形的高度，em）。w 为测得的宽度（字形空间单位，未知时为 0）
+  function texChar(ch, family, fi, w) {
+    const k = ch.length === 1 ? ch.charCodeAt(0) : -1;
+    const ctrl = k >= 0 && k < 0x20;
+    if (/^(CMSY|CMBSY|LMMathSymbols)/i.test(family)) {
+      // CMSY 没有小写字母和数字：出现的只能是未解码的编码；大写字母是手写体
+      if (k >= 0x41 && k <= 0x5a) return { ch, style: /^CMBSY/i.test(family) ? 'boldsymbol' : 'mathcal' };
+      if (ctrl || /^[a-z0-9]$/.test(ch) || k === 0x7f) return { ch: OMS[k] };
+    } else if (/^(CMEX|LMMathExtension|EUEX)/i.test(family)) {
+      if (TEX_DELIM_PUA[ch]) return { ch: TEX_DELIM_PUA[ch], ext: 0.9 };
+      if (ctrl || /^[A-Za-z0-9]$/.test(ch) || k === 0x7f) return { ch: OMX[k], ext: omxHeight(k) };
+      const code = texCode(ch, family, fi, w);
+      if (k >= 0x20 && k < 0x80 && code === k) return { ch: OMX[k], ext: omxHeight(k) }; // 字宽对应的是该编码本身的字形
+      return { ch: UNI_FIX[ch] || ch, ext: code >= 0 ? omxHeight(code) : 1.2 };
+    } else if (/^(CMMI|LMMathItalic)/i.test(family)) {
+      if (ctrl) return { ch: GREEK_OML[k] || ch };
+      if (OML_ASCII[ch]) return { ch: OML_ASCII[ch] };
+    } else if (/^(CMR|CMBX|CMSL|CMTI|CMSS|LMRoman|LMSans)/i.test(family)) {
+      if ((ctrl || k === 0x7f) && OT1[k]) return { ch: OT1[k] };
+      // OT1 中 ^、~ 的位置是抑扬符、波浪号重音
+      if (ch === '^') return { ch: 'ˆ' };
+      if (ch === '~') return { ch: '˜' };
+    }
+    return { ch: UNI_FIX[ch] || ch };
+  }
+
+  // 文本项 → 若干小段。TeX 的 Type 1 字体中，正文与公式里的数字、括号同属一个字体，常被 PDF.js 合成一个文本项
+  // （如“) text”“(mod”），重音、否定斜线也与相邻的字连在一起；按字体的字宽算出每个字符的位置后拆开：
+  // 数学字体逐字拆开，其他字体拆成单词与单个标点
+  function textPieces(item, pn, st, en, order) {
+    const str = item.str;
+    const [a, , c, d, e, f] = item.transform;
+    const s = Math.hypot(c, d) || item.height || 10;
+    const font = CCM.pdfFontName ? CCM.pdfFontName(pn, item.fontName) : '';
+    const base = { y: f, s, page: pn, font, isExt: EXT_FONT.test(font), mathFont: MATH_FONT.test(font), italic: ITALIC_FONT.test(font) };
+    const style = fontStyle(font);
+    const fam = (TEX_FONT_FAMILY.exec(font) || [])[1];
+    const len = str.length || 1;
+    // LM 的正文字体有完整的 Unicode 映射；字宽表常按 glyph ID 而不是 ASCII 编号索引。
+    // 不拆这种正文，否则文件名和 listings 样例的字间距会被破坏。
+    if (!fam || (/^(LMRoman|LMSans|LMMono)/i.test(fam) && !/^\(?mod\b|^arg\s+(?:min|max)\b/.test(str))) {
+      const p = { ...base, str: fixCjk(str.slice(st, en)), x0: e + (item.width * st) / len, x1: e + (item.width * en) / len, order };
+      if (style && p.str.trim()) p.style = style;
+      return [p];
+    }
+    // 每个字符的位置：按编码查字宽（没有字体信息时平均分配）；字宽之和与文本项宽度之差
+    // （字间的 kern，PDF.js 在较大的间隔处插入了空格）分给空格
+    const fi = fontInfo(pn, item.fontName);
+    const chars = Array.from(str);
+    const adv = chars.map((ch) => {
+      if (ch === ' ') return null;
+      if (!fi) return item.width / chars.length;
+      const k = texCode(ch, fam, fi, 0);
+      return (k >= 0 && fi.widths[k] != null ? fi.widths[k] : 500) * Math.abs(a) / 1000;
+    });
+    const solidW = adv.reduce((t, w) => t + (w || 0), 0);
+    const spaces = adv.filter((w) => w === null).length;
+    const rest = item.width - solidW;
+    const spaceW = spaces ? Math.max(0, rest) / spaces : 0;
+    // 宽度为 0 的文本项（TeX 的重音、否定斜线：前进量被 kern 抵消，字形画在前一个字符上）保持宽度为 0
+    const k = item.width < 0.02 * s ? 0 : !spaces && solidW > 0 ? item.width / solidW : 1;
+    const xs = [];
+    let x = e;
+    let pos = 0;
+    for (let i = 0; i < chars.length; i++) {
+      const w = adv[i] === null ? spaceW : adv[i] * k;
+      xs.push({ ch: chars[i], x0: x, x1: x + w, i: pos });
+      x += w;
+      pos += chars[i].length;
+    }
+    const picked = xs.filter((g) => g.i >= st && g.i < en);
+    const isMath = base.mathFont || base.isExt;
+    const out = [];
+    let cur = null;
+    const flush = () => { if (cur) { out.push(cur); cur = null; } };
+    for (const g of picked) {
+      if (g.ch === ' ') { flush(); continue; }
+      const t = texChar(g.ch, fam, fi, ((g.x1 - g.x0) * 1000) / (Math.abs(a) || 1));
+      if (t.ch === '') { flush(); continue; } // 拼接定界符的延伸部件
+      const piece = { ...base, str: t.ch, x0: g.x0, x1: g.x1 };
+      if (t.style || style) piece.style = t.style || style;
+      if (t.ext) piece.extH = t.ext;
+      if (base.isExt && g.x1 === g.x0 && (OPEN_DELIM[t.ch] || CLOSE_DELIMS.has(t.ch))) piece.extH = 3;
+      // 数学字体、重音等叠放的字形逐个成段；其他字体中连续的字母、数字合成一个单词
+      const word = !isMath && /^[\p{L}\p{N}'’]$/u.test(t.ch) && !/[\u0300-\u036f\u02c6-\u02dd\u00a8\u00af\u00b4]/.test(t.ch);
+      if (word && cur && cur.word && Math.abs(cur.x1 - g.x0) < 0.3 * s) {
+        cur.str += t.ch;
+        cur.x1 = g.x1;
+        continue;
+      }
+      flush();
+      cur = piece;
+      if (word) cur.word = true;
+    }
+    flush();
+    out.forEach((p, i) => { p.order = order + i / 1000; delete p.word; });
+    return out;
+  }
+
+  function toPieces(item, pn, st, en, order) {
+    if (item.__glyph) return [toPiece(item, pn, st, en, order)];
+    return textPieces(item, pn, st, en, order);
   }
 
   function toPiece(item, pn, st, en, order) {
@@ -393,6 +898,9 @@
         rule: !!g.rule,
         tex: g.tex,
         base: !!g.base,
+        tall: g.tall || ((OPEN_DELIM[g.str] || CLOSE_DELIMS.has(g.str) || DELIM_PIECE[g.str]) && g.ink &&
+          g.ink.top - g.ink.bottom > 1.05 * g.s ? g.ink : undefined),
+        ink: g.ink,
         isExt: false,
         mathFont: true,
         italic: /italic|mathit/i.test(g.variant) || /[\u{1d434}-\u{1d467}\u{1d6e2}-\u{1d71b}]/u.test(g.str),
@@ -530,15 +1038,29 @@
       });
       // 有边框线的表格：表格内的内容按单元格分别还原
       if (!opts.noTables) arr = extractTables(page, arr, bodyS, info, lines);
+      arr = preprocess(arr, true);
+      for (const r of arr.filter((p) => p.rule)) {
+        const surd = arr.find((p) => isRad(p) && Math.abs(p.x1 - r.x0) < 0.6 * r.s && Math.abs(p.y - r.y) < 1.8 * r.s);
+        if (surd) r.anchorY = vy(surd);
+      }
+      // 重音、盖在文字上的箭头使用被修饰文字的行，而不是它们自身抬高后的基线。
+      for (const a of arr.filter((p) => isAccentStr(p.str) || ARROWS.test(p.str) || /^[−–]$/.test(p.str))) {
+        const accent = isAccentStr(a.str);
+        const under = arr.filter((p) => p !== a && !p.rule && !p.isExt && !isAccentStr(p.str) && p.mathFont && p.s >= 0.8 * a.s &&
+          p.y <= a.y + (accent ? 0.15 : -0.4) * a.s && p.y >= a.y - 1.2 * a.s &&
+          Math.abs(midX(p) - midX(a)) < (a.x1 - a.x0) / 2 + 0.35 * a.s);
+        if (under.length) a.anchorY = under.reduce((p, q) => p.y > q.y ? p : q).y;
+      }
+      const lineY = (p) => p.anchorY ?? vy(p);
       // 小字号的数学内容（上下标、上下限、行内分式的分子分母）、大型运算符与根号不作为“行”的锚点，之后再分配到最近的行
       // 矢量公式的分数线：线上下方的分子、分母（即使是正常字号）也不作为锚点，之后并入分数线所在的行
       const fracRules = arr.filter((r) => r.rule && !arr.some((e) => isRad(e) && Math.abs(e.x1 - r.x0) < 0.6 * r.s));
-      const inFraction = (p) => p.geo && fracRules.some((r) => {
+      const inFraction = (p) => (p.mathFont || p.geo || /^[\d()+−=!.,]+$/.test(p.str)) && fracRules.some((r) => {
         const cx = (p.x0 + p.x1) / 2;
         const d = vy(p) - r.y;
         return cx > r.x0 && cx < r.x1 && Math.abs(d) < 2.5 * r.s && Math.abs(d + 0.25 * r.s) > 0.4 * p.s;
       });
-      const floating = (p) => p.isExt || isRad(p) || p.rule || inFraction(p) ||
+      const floating = (p) => p.isExt || p.anchorY != null || isAccentStr(p.str) || isRad(p) || p.rule || inFraction(p) ||
         (p.s < 0.88 * bodyS && !CJK.test(p.str) && (p.mathFont || p.italic || ROMAN_FONT.test(p.font) || !p.font));
 
       const anchors = [];
@@ -573,6 +1095,25 @@
         return R.x0 - pos < tol;
       };
       const yDist = (a, b) => Math.min(...a.ys.flatMap((y1) => b.ys.map((y2) => Math.abs(y1 - y2))));
+      // 跨两行以上的括号把矩阵 / cases 的各行连接起来；普通相邻正文行不能因此被合并。
+      for (const left of arr.filter((p) => isTall(p) && OPEN_DELIM[p.str])) {
+        const right = arr.filter((p) => p !== left && isTall(p) && p.str === OPEN_DELIM[left.str] && p.x0 > left.x0 &&
+          Math.abs((topOf(p) + botOf(p)) / 2 - (topOf(left) + botOf(left)) / 2) < 0.3 * (topOf(left) - botOf(left)))
+          .sort((a, b) => a.x0 - b.x0)[0];
+        if (!right && left.str !== '{') continue;
+        const within = (p) => p.x1 > left.x1 && p.x0 < (right ? right.x0 : left.x1 + 30 * bodyS) &&
+          p.y < topOf(left) && p.y > botOf(left) - 0.1 * bodyS;
+        const members = clusters.filter((c) => c.items.some(within));
+        if (members.length < 2) continue;
+        const c = members[0];
+        for (const other of members.slice(1)) {
+          c.items.push(...other.items); c.ys.push(...other.ys);
+          c.x0 = Math.min(c.x0, other.x0); c.x1 = Math.max(c.x1, other.x1);
+          c.s = Math.max(c.s, other.s); c.weight += other.weight;
+        }
+        c.y = (topOf(left) + botOf(left)) / 2 - 0.25 * left.s;
+        clusters = clusters.filter((q) => q === c || !members.includes(q));
+      }
       // B) 合并：基线相差不到一行的（行间公式里的分子、主行、分母），以及被浮动内容连接起来的同一行
       for (let merged = true; merged;) {
         merged = false;
@@ -601,16 +1142,34 @@
         }
       }
       // C) 其余内容分配到垂直距离最近的行
-      // 横线（分数线、根号线）先分配，并把行的范围扩展到横线两端，使分子、分母都能归到这一行
+      // 横线（分数线、根号线）先分配，并把行的范围扩展到横线两端，使分子、分母都能归到这一行。
+      // 紧接在已分配内容右侧的小字号（上下标、上标的上标）跟随它所在的行，即使与上一行的基线更近
       const leftovers = [];
-      for (const p of [...others].sort((a, b) => !!b.rule - !!a.rule)) {
-        const y = vy(p);
+      const owner = new Map();
+      for (const c of clusters) for (const q of c.items) owner.set(q, c);
+      const attached = (p) => {
         let best = null;
-        for (const c of clusters) {
+        for (const [q, c] of owner) {
+          if (q.rule) continue;
+          const gap = p.x0 - q.x1;
+          const dy = Math.abs(vy(p) - vy(q));
+          if (gap < -0.2 * p.s || gap > 0.35 * p.s || dy > 0.9 * Math.max(p.s, q.s)) continue;
+          const score = Math.abs(gap) + 0.5 * dy;
+          if (!best || score < best.score) best = { c, score };
+        }
+        return best && best.c;
+      };
+      for (const p of [...others].sort((a, b) => !!b.rule - !!a.rule || a.x0 - b.x0)) {
+        const y = lineY(p);
+        let best = null;
+        const via = p.rule || p.anchorY != null || p.isExt || isRad(p) ? null : attached(p);
+        if (via) best = { c: via, d: 0 };
+        else for (const c of clusters) {
           if (p.x1 < c.x0 - 2 * c.s || p.x0 > c.x1 + 2 * c.s) continue;
           const d = Math.min(...c.ys.map((b) => Math.abs(y - b)));
           if (d < 1.7 * c.s && (!best || d < best.d)) best = { c, d };
         }
+        if (best) owner.set(p, best.c);
         if (best && p.rule) {
           best.c.x0 = Math.min(best.c.x0, p.x0);
           best.c.x1 = Math.max(best.c.x1, p.x1);
@@ -620,7 +1179,7 @@
       }
       // 没有任何正文锚点的独立小字号内容（例如只有一个小号公式）
       for (const p of leftovers) {
-        const y = vy(p);
+        const y = lineY(p);
         const c = clusters.find((g) => g.orphan && Math.abs(g.y - y) < 1.2 * Math.max(g.s, p.s) && p.x0 - g.x1 < 2 * g.s && g.x0 - p.x1 < 2 * g.s);
         if (c) {
           c.items.push(p);
@@ -639,14 +1198,15 @@
       for (const c of clusters) {
         const items = c.items.sort((a, b) => a.x0 - b.x0);
         if (!items.some((p) => p.str.trim())) continue;
-        const normal = items.filter((p) => !p.isExt && !isRad(p) && p.str.trim());
-        const s = sizeOf(normal) || items[0].s;
+        const normal = items.filter((p) => !p.isExt && p.anchorY == null && !isRad(p) && p.str.trim());
+        const formula = normal.length > 0 && normal.every((p) => p.mathFont || p.geo || NEUTRAL_RE.test(p.str) || FUNCS.has(p.str.trim()));
+        const s = formula ? refSize(normal) : sizeOf(normal) || items[0].s;
         // 行高按正文文字计算：MathJax 公式的字号通常比正文大一些，公式多的行不能因此被当成标题或另起一段。
         // 列表符号的字号可能与正文不同，不算在内；只有公式和标点的行不会是标题
         const textual = normal.filter((p) => !p.geo && !p.mathFont && !BULLET_CHAR.test(p.str.trim()));
         const words = sizeOf(textual.filter((p) => /[\p{L}\p{N}]/u.test(p.str)));
         const ts = words || sizeOf(textual);
-        const B = normal.length ? baselineOf(normal.map((p) => ({ ...p })), s) : c.y;
+        const B = formula && items.some(isTall) ? c.y : normal.length ? baselineOf(normal.map((p) => ({ ...p })), s) : c.y;
         const tops = items.map((p) => boxOf(p)[1]);
         const bots = items.map((p) => boxOf(p)[0]);
         lines.push({
@@ -744,19 +1304,33 @@
   // ---------- 精确模式：一行内区分正文与公式 ----------
   function buildParts(line) {
     const { items, B, s } = line;
+    const cases = items.filter((p) => p.str === '{' && isTall(p) && !items.some((q) =>
+      q.str === '}' && isTall(q) && q.x0 > p.x0 && Math.abs(q.y - p.y) < 0.5 * s));
+    const inCase = (p) => cases.some((left) => p.x0 >= left.x1 - 0.1 * s && p.y <= topOf(left) && p.y >= botOf(left) - 0.2 * s);
     for (const p of items) {
       const t = p.str.replace(/\s+/g, '');
       const script = p.s < 0.85 * s && Math.abs(p.y - B) > 0.08 * s;
       if (p.rule) p.kind = 'math';
       else if (!t) p.kind = 'space';
+      else if (inCase(p)) { p.kind = 'math'; if (!p.mathFont && !p.style && /\p{L}/u.test(t)) p.upright = true; }
       else if (CJK.test(p.str)) p.kind = 'text';
-      else if (p.mathFont || p.isExt || script) p.kind = 'math';
+      else if (p.mathFont || p.isExt || script || MATH_STYLE.test(p.style || '')) p.kind = 'math';
       else if (p.italic && /^[A-Za-z]$/.test(t)) p.kind = 'math';
-      else if (RADICALS.has(t)) p.kind = 'math';
-      else if ((p.italic && /^[A-Za-z]{2,4}$/.test(t)) || NEUTRAL_RE.test(p.str) || FUNCS.has(t)) p.kind = 'neutral';
+      else if (RADICALS.has(t) || GREEK_RE.test(t) || /^[\u0338\ue737]$/.test(t)) p.kind = 'math';
+      else if ((p.italic && /^[A-Za-z]{2,4}$/.test(t)) || NEUTRAL_RE.test(p.str) || FUNCS.has(t) || OPERATOR_NAMES.has(t) ||
+        LIMIT_FUNCS.has(t) || t === 'mod' || isAccentStr(t)) p.kind = 'neutral';
       else p.kind = 'text';
+      // 正文字体的字母（并入公式后输出为 \mathrm、函数名或 \text）
+      if (!p.mathFont && !p.italic && !p.geo && !p.style && /^[A-Za-z]+$/.test(t)) p.upright = true;
     }
     const solid = items.filter((p) => p.kind !== 'space');
+    // 单字母粗体 / 无衬线的代数式：正文粗体文件名不能因此被当作公式。
+    for (let i = 1; i + 1 < solid.length; i++) {
+      const a = solid[i - 1], op = solid[i], b = solid[i + 1];
+      if (!/^[+−=×⋅]$/.test(op.str.trim()) || !a.style || a.style !== b.style ||
+        !/^[A-Za-z]$/.test(a.str) || !/^[A-Za-z]$/.test(b.str)) continue;
+      if (op.x0 - a.x1 < 0.8 * s && b.x0 - op.x1 < 0.8 * s) a.kind = op.kind = b.kind = 'math';
+    }
     // 行首单独的列表符号（包括用 MathJax 画出的 ∗）是列表标记，不是公式
     if (solid[0] && BULLET_CHAR.test(solid[0].str.trim()) && solid[1] && solid[1].x0 - solid[0].x1 > 0.2 * s) solid[0].kind = 'text';
 
@@ -818,14 +1392,25 @@
       }
     }
 
-    // 与公式相邻的数字、括号、运算符、函数名并入公式
+    // 与公式相邻的数字、括号、运算符、函数名并入公式；紧贴着公式的单个正文字母（\mathrm{d}x 中的 d）、
+    // 粗体或无衬线的字母（\mathbf、\mathsf）也并入
     for (let changed = true; changed;) {
       changed = false;
       solid.forEach((p, i) => {
-        if (p.kind !== 'neutral') return;
         const near = (q) => q && q.kind === 'math' && Math.max(q.x0 - p.x1, p.x0 - q.x1) < 0.8 * s;
-        if (near(solid[i - 1]) || near(solid[i + 1])) { p.kind = 'math'; changed = true; }
-        else if (p.italic && /^[A-Za-z]{2,4}$/.test(p.str.trim()) && [solid[i - 1], solid[i + 1]].some((q) => q && q.kind === 'text' && CJK.test(q.str))) { p.kind = 'math'; changed = true; }
+        const tight = (q) => q && q.kind === 'math' && Math.max(q.x0 - p.x1, p.x0 - q.x1) < 0.12 * s;
+        const t = p.str.trim();
+        if (p.kind === 'text' && ((p.upright && /^[A-Za-z]{1,3}$/.test(t)) || (p.style && /^[A-Za-z0-9]+$/.test(t))) && (tight(solid[i - 1]) || tight(solid[i + 1]))) {
+          p.kind = 'math';
+          changed = true;
+          return;
+        }
+        if (p.kind !== 'neutral') return;
+        // 括号只向它所朝的一侧并入：右括号跟在公式后面，左括号在公式前面（“[1] 公式”中的 ] 不属于公式）
+        const fromLeft = !/^[([{⟨]$/.test(t) && near(solid[i - 1]);
+        const fromRight = !/^[)\]}⟩]$/.test(t) && near(solid[i + 1]);
+        if (fromLeft || fromRight) { p.kind = 'math'; changed = true; }
+        else if (p.italic && /^[A-Za-z]{2,4}$/.test(t) && [solid[i - 1], solid[i + 1]].some((q) => q && q.kind === 'text' && CJK.test(q.str))) { p.kind = 'math'; changed = true; }
       });
     }
     // 公式末尾的句读归还正文
@@ -1593,7 +2178,7 @@
         if (pending.has(null)) all.push(...pending.get(null));
       }
     }
-    return all.map((it, i) => toPiece(it, n, 0, it.str.length, orderBase + i));
+    return all.flatMap((it, i) => toPieces(it, n, 0, it.str.length, orderBase + i));
   }
 
   CCM.pdfSelectionAsync = async function pdfSelectionAsync(range, settings, onProgress) {

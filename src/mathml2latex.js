@@ -21,7 +21,8 @@
     '∝': '\\propto', '≪': '\\ll', '≫': '\\gg', '≺': '\\prec', '≻': '\\succ', '⪯': '\\preceq',
     '⪰': '\\succeq', '≼': '\\preccurlyeq', '≽': '\\succcurlyeq', '≍': '\\asymp', '≐': '\\doteq',
     '≜': '\\triangleq', '≔': ':=', '≮': '\\nless', '≯': '\\ngtr', '≰': '\\nleq', '≱': '\\ngeq',
-    '≁': '\\nsim', '≇': '\\ncong', '∣': '\\mid', '∤': '\\nmid', '∥': '\\parallel', '∦': '\\nparallel',
+    '≁': '\\nsim', '≇': '\\ncong', '≢': '\\not\\equiv', '≉': '\\not\\approx', '≄': '\\not\\simeq',
+    '∣': '\\mid', '∤': '\\nmid', '∥': '\\parallel', '∦': '\\nparallel',
     '⊥': '\\perp', '⊤': '\\top', '⊢': '\\vdash', '⊣': '\\dashv', '⊨': '\\models',
     '∈': '\\in', '∉': '\\notin', '∋': '\\ni', '∌': '\\not\\ni', '⊂': '\\subset', '⊃': '\\supset',
     '⊆': '\\subseteq', '⊇': '\\supseteq', '⊊': '\\subsetneq', '⊋': '\\supsetneq', '⊄': '\\not\\subset',
@@ -47,7 +48,7 @@
     'ℵ': '\\aleph', 'ℶ': '\\beth', 'ℑ': '\\Im', 'ℜ': '\\Re', '℘': '\\wp', 'ℎ': 'h', 'ı': '\\imath',
     'ȷ': '\\jmath', 'ð': '\\eth', '…': '\\ldots', '⋯': '\\cdots', '⋮': '\\vdots', '⋱': '\\ddots',
     '′': "'", '″': "''", '‴': "'''", '∠': '\\angle', '∡': '\\measuredangle', '°': '^{\\circ}',
-    '⟨': '\\langle', '⟩': '\\rangle', '〈': '\\langle', '〉': '\\rangle', '⌈': '\\lceil', '⌉': '\\rceil',
+    '⟨': '\\langle', '⟩': '\\rangle', '〈': '\\langle', '〉': '\\rangle', '〈': '\\langle', '〉': '\\rangle', '⌈': '\\lceil', '⌉': '\\rceil',
     '⌊': '\\lfloor', '⌋': '\\rfloor', '‖': '\\|', '∴': '\\therefore', '∵': '\\because', '□': '\\square',
     '■': '\\blacksquare', '∎': '\\blacksquare', '△': '\\triangle', '▽': '\\triangledown', '★': '\\bigstar',
     '♯': '\\sharp', '♭': '\\flat', '♮': '\\natural', '♠': '\\spadesuit', '♥': '\\heartsuit',
@@ -90,6 +91,7 @@
 
   function charTex(ch) {
     if (Object.prototype.hasOwnProperty.call(SYM, ch)) return SYM[ch];
+    if ('ℬℰℱℋℐℒℳℛℯℊℴ'.includes(ch)) return `\\mathscr{${ch.normalize('NFKC')}}`;
     const cp = ch.codePointAt(0);
     if (cp >= 0x1d400 && cp <= 0x1d6a3) {
       const style = ALNUM_STYLES[Math.floor((cp - 0x1d400) / 52)] || '';
