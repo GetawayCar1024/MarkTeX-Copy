@@ -198,6 +198,72 @@
     return false;
   }
 
+  // ---------- 图片大小上限：复制内容中内嵌的图片数据（PDF 中的图片、网页中 data: / blob: 地址的图片）过长时压缩 ----------
+  // 上限来自设置中的“限制图片大小”（默认 100 KB，按 data URL 的长度计）；不限制时为 0
+  CCM.imageLimit = (settings) => {
+    const s = settings || CCM.DEFAULTS || {};
+    if (s.imageLimit === false) return 0;
+    const kb = Math.round(+s.imageMaxKB);
+    return (Number.isFinite(kb) && kb >= 10 ? kb : 100) * 1024;
+  };
+  // 画布 → data URL。不限制时为无损的 PNG；限制时先试 PNG（照片除外，PNG 不会更小），超出再降低 JPEG 画质
+  // （透明处填白色），最后缩小尺寸。很大的图片先缩小到约 limit × 32 个像素，免得在原尺寸上反复编码
+  CCM.compactImage = (canvas, limit, { photo = false } = {}) => {
+    if (!limit || !photo) {
+      const png = canvas.toDataURL('image/png');
+      if (!limit || png.length <= limit) return png;
+    }
+    const k = Math.min(1, Math.sqrt((limit * 32) / (canvas.width * canvas.height)));
+    let src = document.createElement('canvas');
+    src.width = Math.max(1, Math.round(canvas.width * k));
+    src.height = Math.max(1, Math.round(canvas.height * k));
+    const bg = src.getContext('2d');
+    bg.fillStyle = '#fff';
+    bg.fillRect(0, 0, src.width, src.height);
+    bg.imageSmoothingQuality = 'high';
+    bg.drawImage(canvas, 0, 0, src.width, src.height);
+    for (let round = 0; round < 8; round++) {
+      for (const q of [0.88, 0.78, 0.68]) {
+        const url = src.toDataURL('image/jpeg', q);
+        if (url.length <= limit) return url;
+      }
+      const next = document.createElement('canvas');
+      next.width = Math.max(1, Math.round(src.width * 0.8));
+      next.height = Math.max(1, Math.round(src.height * 0.8));
+      const ctx = next.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(src, 0, 0, next.width, next.height);
+      src = next;
+    }
+    return src.toDataURL('image/jpeg', 0.68);
+  };
+
+  // 网页中以数据形式存在的图片（data: / blob: 地址，而不是指向网络的链接）：超过上限时按页面中显示的图片压缩；
+  // blob: 地址离开页面就失效，改为内嵌的数据。结果按图片与上限缓存，重复复制时不再重新编码
+  const embedCache = new WeakMap();
+  function embeddedImage(img, src) {
+    const limit = CCM.imageLimit(CCM.currentSettings);
+    const isData = /^data:/i.test(src);
+    if (isData && (!limit || src.length <= limit)) return src;
+    let hit = embedCache.get(img);
+    if (!hit || hit.src !== src) embedCache.set(img, (hit = { src, urls: new Map() }));
+    if (hit.urls.has(limit)) return hit.urls.get(limit);
+    try {
+      const w = img.naturalWidth || img.width;
+      const h = img.naturalHeight || img.height;
+      if (!img.complete || !w || !h) return src;
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const url = CCM.compactImage(canvas, limit, { photo: /^data:image\/(jpe?g|webp)/i.test(src) });
+      hit.urls.set(limit, url);
+      return url;
+    } catch (_) {
+      return src; // 读不到像素（跨域的 blob 等）时保持原样
+    }
+  }
+
   function fixup(live, clone) {
     const tag = live.localName;
     if (tag === 'a' && live.hasAttribute('href')) {
@@ -209,7 +275,7 @@
       if (lazy && (!src || src.startsWith('data:'))) {
         try { src = new URL(lazy, location.href).href; } catch (_) { /* ignore */ }
       }
-      if (src) clone.setAttribute('src', src);
+      if (src) clone.setAttribute('src', /^(data|blob):/i.test(src) ? embeddedImage(live, src) : src);
       clone.removeAttribute('srcset');
     } else if (tag === 'input' && live.type === 'checkbox') {
       if (live.checked) clone.setAttribute('checked', '');

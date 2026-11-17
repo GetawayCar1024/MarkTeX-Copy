@@ -23,7 +23,7 @@ To copy from local files (`file://`), also turn on **Allow access to file URLs**
 
 - **Context menu**: copy as Markdown / HTML (rich text) / HTML source; right-click a formula to copy just its LaTeX
 - **Shortcuts**: `Alt+Shift+M` (Markdown) and `Alt+Shift+H` (HTML) by default, changeable in the popup. They only act on a selection, so `Ctrl+C` works too
-- **Popup**: copy, preview, and settings such as formula delimiters, the PDF image size limit and language
+- **Popup**: copy, preview, and settings such as formula delimiters, the image size limit and language
 
 ## Formulas
 
@@ -43,7 +43,6 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 - PDFs still open in the browser's viewer; copying there prompts you to switch instead of copying plain text
 - The reader shares the popup's style and follows the system light / dark theme; the sidebar switches between page thumbnails, the outline and more
 - Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX (scripts, sum limits, fractions, roots, multi-line equations). Formulas are inferred from the layout, so please check them
-- Inline images over the size limit (100 KB by default) are compressed; change the limit or turn it off in the popup
 - PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes; exported on Windows or macOS) are recognized too; TeX in outline titles (scripts, fractions, roots, `\mathbb`, `\texttt`, `\text` and more) is shown as math
 - Line numbers beside code blocks and samples aren't copied (including samples typeset with LaTeX listings); tables split across pages are merged; running headers / footers and content hidden at page breaks are dropped
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
@@ -53,6 +52,7 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 - Brackets are not backslash-escaped (`\[ \]` means math in many editors)
 - CSS-styled bold, italics and headings are recognized; emphasis dots count as bold
 - Code blocks without a language get one guessed from common patterns (C/C++, Python, Java, …)
+- Embedded images (from PDFs, and `data:` / `blob:` images on web pages) over the size limit (100 KB by default) are compressed; other images stay links
 - Doesn't work on browser pages or web stores; scanned PDFs have no text to copy
 
 ## License
