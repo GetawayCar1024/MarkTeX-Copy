@@ -181,8 +181,8 @@
 
   // Unicode 数学字母（U+1D400–1D6A3，每 52 个一组）对应的样式；'' 表示普通数学斜体
   const ALNUM_STYLES = ['mathbf', '', 'boldsymbol', 'mathcal', 'mathcal', 'mathfrak', 'mathbb', 'mathfrak',
-    'mathsf', 'mathsf', 'mathsf', 'mathsf', 'mathtt'];
-  const DIGIT_STYLES = ['mathbf', 'mathbb', 'mathsf', 'mathsf', 'mathtt']; // U+1D7CE 起，每 10 个一组
+    'mathsf', 'mathsf', 'mathsf', 'mathsf', 'texttt'];
+  const DIGIT_STYLES = ['mathbf', 'mathbb', 'mathsf', 'mathsf', 'texttt']; // U+1D7CE 起，每 10 个一组
 
   function glyphInfo(hit) {
     const [cp, variant, w] = hit;
@@ -385,9 +385,12 @@
     const merged = [];
     for (const g of glyphs) {
       const last = merged[merged.length - 1];
+      const mono = kind(g) === 'texttt';
       if (kind(g) && last && kind(last) === kind(g) && Math.abs(last.y - g.y) < 0.05 * g.s && Math.abs(last.s - g.s) < 0.05 * g.s &&
-        g.x - last.x1 < 0.12 * g.s && g.x >= last.x - 0.01) {
-        last.str += g.str;
+        g.x - last.x1 < (mono ? 1.2 : 0.12) * g.s && g.x >= last.x - 0.01) {
+        // 等宽字母、数字与标点必须归为同一文字段；保留没有字形的空格，不把代码拆成几个数学原子。
+        const gap = mono && g.x - last.x1 > 0.2 * g.s ? ' '.repeat(Math.max(1, Math.round((g.x - last.x1) / (0.525 * g.s)))) : '';
+        last.str += gap + g.str;
         last.x1 = g.x1;
       } else {
         merged.push({ ...g });
@@ -698,5 +701,5 @@
   };
 
   // 供测试使用
-  CCM._glyphDebug = { endpoints, signature, scalesOf, pageGlyph, fnv };
+  CCM._glyphDebug = { endpoints, signature, scalesOf, pageGlyph, fnv, glyphInfo };
 })();

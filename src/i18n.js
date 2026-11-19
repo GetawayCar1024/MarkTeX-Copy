@@ -76,6 +76,11 @@
       'pdf.viewOutline': '大纲',
       'pdf.viewAttachments': '附件',
       'pdf.viewLayers': '图层',
+      'pdf.history': '批注历史',
+      'pdf.undo': '撤销',
+      'pdf.redo': '重做',
+      'pdf.undone': '已撤销',
+      'pdf.redone': '已重做',
       'notify.title': 'MarkTeX Copy',
     },
     en: {
@@ -151,6 +156,11 @@
       'pdf.viewOutline': 'Outline',
       'pdf.viewAttachments': 'Attachments',
       'pdf.viewLayers': 'Layers',
+      'pdf.history': 'Annotation history',
+      'pdf.undo': 'Undo',
+      'pdf.redo': 'Redo',
+      'pdf.undone': 'Undone',
+      'pdf.redone': 'Redone',
       'notify.title': 'MarkTeX Copy',
     },
   };

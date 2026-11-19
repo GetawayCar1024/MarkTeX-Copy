@@ -44,8 +44,13 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 - The reader shares the popup's style and follows the system light / dark theme; the sidebar switches between page thumbnails, the outline and more
 - Copying rebuilds paragraphs, headings, nested lists, bold, code blocks, ruled tables and images (images can be selected on their own and are copied inline), and turns formulas into LaTeX: scripts, sum limits, fractions, indexed roots, math fonts (such as `\mathbb`, `\mathcal` and `\mathfrak`), accents, binomials, labeled arrows, matrices, piecewise functions and multi-line equations. Formulas in both body text and headings are recognized; they are inferred from the layout, so please check them
 - PDFs exported via MathJax (e.g. Typora, where formulas are vector shapes; exported on Windows or macOS) are recognized too; TeX in outline titles (scripts, fractions, roots, `\mathbb`, `\texttt`, `\text` and more) is shown as math
+- The outline highlights the current section and reveals it when needed, including multiple sections on one page. Manually browsing the outline pauses following; the locate button returns to the current section
+- Middle-click the page or sidebar, then move the mouse to auto-scroll. Click again or press Esc to stop; holding and dragging the middle button stops on release
+- All annotations share undo / redo buttons: `Ctrl+Z` to undo, `Ctrl+Shift+Z` or `Ctrl+Y` to redo (`⌘Z` / `⇧⌘Z` on macOS). Inputs and text currently being edited keep their own undo behavior
 - Line numbers beside code blocks and samples aren't copied (including samples typeset with LaTeX listings); tables split across pages are merged; running headers / footers and content hidden at page breaks are dropped
 - `Ctrl+A` selects only the PDF content and reads every page, no scrolling needed
+
+Outline titles and page content are separate PDF data. TeX source in a bookmark does not mean the page retains that source. Copying prioritizes readable characters: letters, digits and punctuation in `\texttt` stay together, with plain text as a fallback when the font is unknown. Images and unrecognized vector glyphs are not OCRed.
 
 ## Notes
 
@@ -57,7 +62,9 @@ The browser's PDF viewer doesn't let extensions read the selection, so a [PDF.js
 
 ## Development checks
 
-Run `node --test tools/test-pdf-math.cjs` to check PDF glyphs, rules, fonts, accents and two-dimensional formula reconstruction.
+Run `node --test tools/test-pdf-math.cjs tools/test-pdf-navigation.cjs` to check formula reconstruction, outline positioning and undo / redo shortcuts.
+
+With `playwright-core` and Chromium installed, run `node tools/test-pdf-reader.cjs` for real scrolling, navigation and annotation checks. `PLAYWRIGHT_MODULE` can point to an existing installation; the script generates its own test PDF.
 
 ## License
 

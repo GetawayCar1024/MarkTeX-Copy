@@ -162,3 +162,18 @@ test('a standalone extension-font operator has a finite line size', () => {
   assert.ok(Number.isFinite(ls[0].s));
   assert.equal(formula(ls[0]), '\\sum');
 });
+
+test('monospace letters, digits and punctuation use the same text command', () => {
+  const { c } = load();
+  for (const cp of [0x1d68a, 0x1d7f6, 0x3a, 0x5f, 0x3c]) {
+    const g = c._glyphDebug.glyphInfo([cp, 'monospace', 525]);
+    assert.equal(g.cmd, 'texttt');
+  }
+});
+
+test('an unknown font variant does not discard readable characters', () => {
+  const { c } = load();
+  const g = c._glyphDebug.glyphInfo([0x61, 'unknown-font-variant', 500]);
+  assert.equal(g.str, 'a');
+  assert.equal(c._pdfParseMath([piece(g.str, 0, 100)]), 'a');
+});

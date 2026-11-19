@@ -81,6 +81,14 @@
   --button-border-radius: var(--mt-r-control);
   --button-font-weight: 600;
   --hover-filter: none;
+  --text-primary-color: var(--mt-label);
+  --text-secondary-color: var(--mt-label-2);
+  --text-color: var(--mt-label);
+  --color-accent-primary: var(--mt-accent);
+  --color-accent-primary-hover: var(--mt-accent);
+  --focus-outline-color: var(--mt-accent);
+  --focus-ring-outline: 2px solid var(--mt-accent);
+  --outline-color: var(--mt-accent);
 }
 
 body,
@@ -191,6 +199,28 @@ select {
 /* 分组之间用间距隔开，不用分隔线 */
 #editorModeButtons {
   margin-inline: 6px;
+}
+
+.marktex-history {
+  margin-inline: 4px;
+}
+
+#marktexUndoButton::before {
+  mask-image: url(/src/reader-icons/undo.svg);
+}
+
+#marktexRedoButton::before {
+  mask-image: url(/src/reader-icons/redo.svg);
+}
+
+#marktexHistory .toolbarButton:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* 删除批注不再弹出单独的撤销条；所有批注统一使用工具栏的撤销 / 重做。 */
+#editorUndoBar {
+  display: none !important;
 }
 
 #marktexTitle {
@@ -823,6 +853,149 @@ dialog::backdrop {
   background-color: rgba(0, 0, 0, 0.25);
 }
 
+/* 原生 PDF.js 尚未使用主题变量的编辑浮层：不改编辑区，只统一其工具栏、菜单和对话框。 */
+#viewer .editToolbar {
+  --editor-toolbar-bg-color: var(--mt-popover);
+  --editor-toolbar-fg-color: var(--mt-icon);
+  --editor-toolbar-border-color: var(--mt-popover-line);
+  --editor-toolbar-hover-bg-color: var(--mt-menu-hover);
+  --editor-toolbar-hover-fg-color: var(--mt-label);
+  --editor-toolbar-focus-outline-color: var(--mt-accent);
+  --editor-toolbar-shadow: var(--mt-shadow-lg);
+  --editor-toolbar-delete-image: url(/src/reader-icons/trash.svg);
+  --editor-toolbar-highlight-image: url(/src/reader-icons/highlight.svg);
+  --editor-toolbar-colorpicker-arrow-image: url(/src/reader-icons/chevron-down-small.svg);
+  --alt-text-warning-color: var(--mt-accent);
+  border-width: 0.5px;
+  border-radius: var(--mt-r-group);
+  backdrop-filter: var(--mt-blur);
+  font: 12px/1.4 var(--mt-font);
+
+  .buttons > :not(.divider) {
+    border-radius: var(--mt-r-inner);
+    font-family: var(--mt-font);
+  }
+
+  .buttons .basic::before {
+    mask-size: 18px;
+  }
+
+  .tooltip {
+    --alt-text-tooltip-bg: var(--mt-chrome);
+    --alt-text-tooltip-fg: var(--mt-label);
+    border-radius: var(--mt-r-control);
+  }
+}
+
+#viewer .colorPicker .dropdown {
+  border: 0.5px solid var(--mt-popover-line);
+  border-radius: var(--mt-r-group);
+  background-color: var(--mt-popover);
+  box-shadow: var(--mt-shadow-lg);
+  backdrop-filter: var(--mt-blur);
+}
+
+:is(#viewer, .editorParamsToolbar) .colorPicker {
+  --hover-outline-color: var(--mt-accent);
+  --selected-outline-color: var(--mt-accent);
+  --swatch-border-color: var(--mt-hairline);
+}
+
+dialog.dialog {
+  --dialog-bg-color: var(--mt-popover);
+  --text-secondary-color: var(--mt-label-2);
+  --textarea-border-color: var(--mt-separator);
+  --textarea-bg-color: var(--mt-fill);
+  --textarea-fg-color: var(--mt-label);
+  --input-text-bg-color: var(--mt-fill);
+  --input-text-fg-color: var(--mt-label);
+  font: 13px/1.5 var(--mt-font);
+
+  button {
+    font-family: var(--mt-font);
+  }
+
+  textarea {
+    border: 0.5px solid var(--mt-separator);
+    border-radius: var(--mt-r-control);
+    background: var(--mt-fill);
+    color: var(--mt-label);
+    font: 13px/1.5 var(--mt-font);
+
+    &:focus-visible {
+      outline: 2px solid var(--mt-accent);
+    }
+  }
+}
+
+#addSignatureDialog {
+  --signature-border-color: var(--mt-separator);
+  --tab-panel-border-radius: var(--mt-r-control);
+  --thickness-slider-color: var(--mt-accent);
+
+  .mainContainer [role="tablist"] {
+    box-sizing: border-box;
+    width: calc(100% - 32px);
+    margin-inline: 16px;
+    padding: 2px;
+    border-radius: var(--mt-r-group);
+    background: var(--mt-fill);
+
+    > [role="tab"] {
+      height: 32px;
+      border: 0;
+      border-radius: var(--mt-r-inner);
+      background: transparent;
+      color: var(--mt-label);
+      font: 500 13px var(--mt-font);
+
+      &:hover {
+        border: 0;
+        background: var(--mt-hover);
+        color: var(--mt-label);
+      }
+
+      &[aria-selected="true"] {
+        border: 0;
+        background: var(--mt-thumb);
+        color: var(--mt-label);
+        box-shadow: var(--mt-shadow-thumb);
+        font-weight: 600;
+
+        &:hover {
+          border: 0;
+          background: var(--mt-thumb);
+          color: var(--mt-label);
+        }
+      }
+    }
+  }
+}
+
+:is(#editorCommentsSidebar, .commentPopup) {
+  --comment-bg-color: var(--mt-chrome);
+  --comment-hover-bg-color: var(--mt-hover);
+  --comment-active-bg-color: var(--mt-press);
+  --comment-border-color: var(--mt-separator);
+  --comment-date-fg-color: var(--mt-label-2);
+  --comment-fg-color: var(--mt-label);
+  --comment-count-bg-color: var(--mt-accent-soft);
+  --comment-focus-outline-color: var(--mt-accent);
+  --comment-indicator-selected-fg-color: var(--mt-accent);
+  --comment-indicator-active-fg-color: var(--mt-accent);
+  --comment-close-button-icon: url(/src/reader-icons/close.svg);
+  --comment-popup-delete-button-icon: url(/src/reader-icons/trash.svg);
+  --comment-popup-edit-button-icon: url(/src/reader-icons/ink.svg);
+  --button-comment-active-bg: var(--mt-press);
+  --button-comment-hover-bg: var(--mt-hover);
+  font: 13px/1.5 var(--mt-font);
+}
+
+.commentPopup {
+  border-radius: var(--mt-r-popover);
+  box-shadow: var(--mt-shadow-lg);
+}
+
 /* ====================================================================
    侧栏：紧贴工具栏下方和窗口左侧，与工具栏同色；顶部是分段控件
    ==================================================================== */
@@ -847,6 +1020,12 @@ dialog::backdrop {
   --button-focus-outline-color: var(--mt-accent);
   --indicator-color: var(--mt-accent);
   --resizer-hover-bg-color: var(--mt-accent);
+  --status-border-color: var(--mt-separator);
+  --status-actions-bg: var(--mt-fill);
+  --status-undo-bg: var(--mt-accent-soft);
+  --status-warning-bg: light-dark(#fff2d6, #48391b);
+  --status-waiting-bg: var(--mt-fill);
+  --undo-label-icon: url(/src/reader-icons/undo.svg);
 
   /* 缩略图：细边 + 阴影；当前页、悬停由整块浅色底表示（见下方 .thumbnail） */
   --image-border-width: 2px;
@@ -1060,6 +1239,10 @@ dialog::backdrop {
   overflow-x: hidden;
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-color) transparent;
+}
+
+#viewsManager #viewsManagerStatus .viewsManagerStatusLabel {
+  font: 13px/1.4 var(--mt-font);
 }
 
 /* 缩略图：与 macOS 预览相同，当前页整块浅蓝底、页码在下方的蓝色胶囊中 */
@@ -1392,6 +1575,53 @@ dialog::backdrop {
 #viewerContainer {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-color) transparent;
+}
+
+/* 中键自动滚动的起点只作方向提示，不挡住选择、链接或画布。 */
+.marktex-scroll-origin {
+  position: fixed;
+  z-index: 100001;
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  transform: translate(-50%, -50%);
+  border: 0.5px solid var(--mt-popover-line);
+  border-radius: 50%;
+  background: var(--mt-popover);
+  box-shadow: var(--mt-shadow-sm);
+  backdrop-filter: var(--mt-blur);
+  pointer-events: none;
+
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 4px;
+    background: var(--mt-icon);
+    mask: url(/src/reader-icons/autoscroll.svg) center / contain no-repeat;
+  }
+
+  &[data-axes="vertical"]::before,
+  &[data-axes="horizontal"]::before {
+    mask-image: url(/src/reader-icons/autoscroll-vertical.svg);
+  }
+
+  &[data-axes="horizontal"]::before {
+    rotate: 90deg;
+  }
+}
+
+html.marktex-autoscrolling,
+html.marktex-autoscrolling * {
+  cursor: var(--mt-scroll-cursor, all-scroll) !important;
+}
+
+@media (forced-colors: active) {
+  .marktex-scroll-origin {
+    background: Canvas;
+    border-color: CanvasText;
+
+    &::before { background: CanvasText; }
+  }
 }
 
 /* 选中文字的高亮色 */

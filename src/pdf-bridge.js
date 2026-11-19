@@ -388,6 +388,8 @@
       buildToolbar();
       managePopovers(app);
       buildSidebarViews();
+      CCM.installPdfNavigation?.(app);
+      CCM.installPdfEditing?.(app);
       app.eventBus.on('textlayerrendered', ({ pageNumber }) => { tagPage(app, pageNumber); });
       // 大纲标题中的 TeX 源码（Typora 等导出的书签）显示为公式
       app.eventBus.on('outlineloaded', () => {
