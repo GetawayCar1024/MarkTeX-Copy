@@ -31,7 +31,6 @@
     const run = async (action) => {
       const ui = manager();
       if (!ui || buttons[action].disabled) return;
-      CCM.stopPdfAutoscroll?.();
       const draft = hasDraft();
       busy = true; sync();
       try {

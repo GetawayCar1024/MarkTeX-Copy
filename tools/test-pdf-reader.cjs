@@ -97,48 +97,63 @@ function fixture() {
       assert.ok(md.includes('std::vector<int>'));
       await page.evaluate(() => getSelection().removeAllRanges());
     });
-    await check('middle-click scroll stops with Escape', async () => {
-      const box = await page.locator('#viewerContainer').boundingBox();
-      const x = box.x + box.width / 2, y = box.y + 180;
-      await page.mouse.click(x, y, { button: 'middle' });
-      assert.equal(await page.locator('.marktex-scroll-origin').count(), 1);
-      await page.mouse.move(x, y + 100); await page.waitForTimeout(200);
-      assert.ok(await page.evaluate(() => document.getElementById('viewerContainer').scrollTop > 10));
-      await page.keyboard.press('Escape');
-      const top = await page.evaluate(() => document.getElementById('viewerContainer').scrollTop);
-      await page.waitForTimeout(100);
-      assert.equal(await page.evaluate(() => document.getElementById('viewerContainer').scrollTop), top);
+    // 当前大纲条目相对侧栏中线的偏移（像素）
+    const outlineOffset = () => page.evaluate(() => {
+      const panel = document.getElementById('viewsManagerContent').getBoundingClientRect();
+      const item = document.querySelector('#outlinesView [aria-current="location"]').getBoundingClientRect();
+      return Math.abs((item.top + item.height / 2) - (panel.top + panel.height / 2));
     });
-    await check('outline follows same-page sections without overriding manual scrolling', async () => {
+    await check('outline follows reading and keeps the current section centred', async () => {
       if (!await page.evaluate(() => PDFViewerApplication.viewsManager.isOpen)) await page.click('#viewsManagerToggleButton');
       await page.click('.marktex-seg:nth-child(2)');
+      assert.equal(await page.getAttribute('#viewsManagerCurrentOutlineButton', 'aria-pressed'), 'true');
       await page.evaluate(async () => {
         const outline = await PDFViewerApplication.pdfDocument.getOutline();
-        await PDFViewerApplication.pdfLinkService.goToDestination(outline[29].items[1].dest);
+        await PDFViewerApplication.pdfLinkService.goToDestination(outline[20].items[1].dest);
       });
-      await page.waitForFunction(() => /30\.2/.test(document.querySelector('#outlinesView [aria-current="location"]')?.textContent || ''));
+      await page.waitForFunction(() => /21\.2/.test(document.querySelector('#outlinesView [aria-current="location"]')?.textContent || ''));
+      await page.waitForTimeout(600); // 平滑滚动结束
+      assert.ok(await outlineOffset() < 30);
+      // 大纲开头：不能再往上滚，停在顶部
+      await page.evaluate(() => { PDFViewerApplication.page = 1; });
+      await page.waitForTimeout(600);
+      assert.equal(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop), 0);
+    });
+    await check('manual outline browsing pauses following', async () => {
       await page.evaluate(() => {
         const panel = document.getElementById('viewsManagerContent');
         panel.dispatchEvent(new WheelEvent('wheel', { deltaY: -100 })); panel.scrollTop = 0;
         PDFViewerApplication.page = 31;
       });
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(300);
+      assert.equal(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop), 0);
+    });
+    await check('outline following can be turned off and on', async () => {
+      await page.click('#viewsManagerCurrentOutlineButton');
+      assert.equal(await page.getAttribute('#viewsManagerCurrentOutlineButton', 'aria-pressed'), 'false');
+      await page.evaluate(() => { document.getElementById('viewsManagerContent').scrollTop = 0; PDFViewerApplication.page = 25; });
+      await page.mouse.wheel(0, 40); // 在页面上滚动通常会恢复跟随；关闭后不应恢复
+      await page.waitForTimeout(400);
       assert.equal(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop), 0);
       await page.click('#viewsManagerCurrentOutlineButton');
-      assert.ok(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop > 100));
+      assert.equal(await page.getAttribute('#viewsManagerCurrentOutlineButton', 'aria-pressed'), 'true');
+      assert.ok(await outlineOffset() < 30);
     });
     await check('middle-clicking an outline link scrolls only the sidebar', async () => {
       await page.evaluate(() => { document.getElementById('viewsManagerContent').scrollTop = 0; });
       const before = await page.evaluate(() => document.getElementById('viewerContainer').scrollTop);
       const tabs = browser.pages().length;
-      const rect = await page.locator('#outlinesView .treeItem > a').first().boundingBox();
+      const anchor = page.locator('#outlinesView .treeItem > a').first();
+      const rect = await anchor.boundingBox();
       const x = rect.x + 50, y = rect.y + rect.height / 2;
       await page.mouse.click(x, y, { button: 'middle' });
-      await page.mouse.move(x, y + 80); await page.waitForTimeout(200);
+      await page.mouse.move(x, y + 120); await page.waitForTimeout(400);
       assert.ok(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop > 10));
       assert.equal(await page.evaluate(() => document.getElementById('viewerContainer').scrollTop), before);
       assert.equal(browser.pages().length, tabs);
-      await page.keyboard.press('Escape');
+      assert.ok(await anchor.getAttribute('href')); // 链接已恢复
+      assert.equal(await page.locator('.marktex-scroll-origin').count(), 0); // 不再有自制的滚动标记
+      await page.keyboard.press('Escape'); // 结束浏览器自带的中键滚动
     });
     await check('clicking a rendered formula selects its outline row', async () => {
       await page.evaluate(() => { document.getElementById('viewsManagerContent').scrollTop = 0; });

@@ -1578,52 +1578,6 @@ dialog.dialog {
 }
 
 /* 中键自动滚动的起点只作方向提示，不挡住选择、链接或画布。 */
-.marktex-scroll-origin {
-  position: fixed;
-  z-index: 100001;
-  width: 28px;
-  height: 28px;
-  box-sizing: border-box;
-  transform: translate(-50%, -50%);
-  border: 0.5px solid var(--mt-popover-line);
-  border-radius: 50%;
-  background: var(--mt-popover);
-  box-shadow: var(--mt-shadow-sm);
-  backdrop-filter: var(--mt-blur);
-  pointer-events: none;
-
-  &::before {
-    content: "";
-    position: absolute;
-    inset: 4px;
-    background: var(--mt-icon);
-    mask: url(/src/reader-icons/autoscroll.svg) center / contain no-repeat;
-  }
-
-  &[data-axes="vertical"]::before,
-  &[data-axes="horizontal"]::before {
-    mask-image: url(/src/reader-icons/autoscroll-vertical.svg);
-  }
-
-  &[data-axes="horizontal"]::before {
-    rotate: 90deg;
-  }
-}
-
-html.marktex-autoscrolling,
-html.marktex-autoscrolling * {
-  cursor: var(--mt-scroll-cursor, all-scroll) !important;
-}
-
-@media (forced-colors: active) {
-  .marktex-scroll-origin {
-    background: Canvas;
-    border-color: CanvasText;
-
-    &::before { background: CanvasText; }
-  }
-}
-
 /* 选中文字的高亮色 */
 .textLayer ::selection {
   background: light-dark(rgba(0, 122, 255, 0.28), rgba(10, 132, 255, 0.42));
@@ -1756,4 +1710,16 @@ html.marktex-autoscrolling * {
   mask-position: center !important;
   -webkit-mask-repeat: no-repeat !important;
   mask-repeat: no-repeat !important;
+}
+
+/* 大纲“自动跟随”开关（src/pdf-navigation.js）：开启时图标为强调色并带浅色底，关闭时为灰色 */
+#viewsManager #viewsManagerCurrentOutlineButton[aria-pressed="true"],
+#viewsManager #viewsManagerCurrentOutlineButton[aria-pressed="true"]:hover,
+#viewsManager #viewsManagerCurrentOutlineButton[aria-pressed="true"]:active {
+  background: color-mix(in srgb, var(--mt-accent) 16%, var(--mt-popover)) !important;
+}
+
+#viewsManager #viewsManagerCurrentOutlineButton[aria-pressed="false"]::before,
+#viewsManager #viewsManagerCurrentOutlineButton[aria-pressed="false"]:hover::before {
+  background-color: var(--mt-icon) !important;
 }

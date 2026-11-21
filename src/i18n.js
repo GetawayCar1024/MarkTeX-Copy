@@ -81,6 +81,8 @@
       'pdf.redo': '重做',
       'pdf.undone': '已撤销',
       'pdf.redone': '已重做',
+      'pdf.followOn': '大纲自动跟随：开（点击关闭）',
+      'pdf.followOff': '大纲自动跟随：关（点击开启）',
       'notify.title': 'MarkTeX Copy',
     },
     en: {
@@ -161,6 +163,8 @@
       'pdf.redo': 'Redo',
       'pdf.undone': 'Undone',
       'pdf.redone': 'Redone',
+      'pdf.followOn': 'Outline follows reading: on (click to turn off)',
+      'pdf.followOff': 'Outline follows reading: off (click to turn on)',
       'notify.title': 'MarkTeX Copy',
     },
   };

@@ -1,89 +1,33 @@
-// 阅读器导航：中键自动滚动，以及不打断手动浏览的大纲定位。
+// 阅读器导航：侧栏支持浏览器自带的中键滚动，以及可开关、不打断手动浏览的大纲自动跟随。
 (() => {
   const CCM = (globalThis.__CCM = globalThis.__CCM || {});
   const $ = (id) => document.getElementById(id);
   const installed = new WeakSet();
 
-  function installAutoscroll(app) {
-    let active = null;
-    let frame = 0;
-    let middlePort = null;
-    const root = document.documentElement;
-    const stop = () => {
-      if (!active) return;
-      cancelAnimationFrame(frame);
-      active.marker.remove();
-      delete active.port.dataset.marktexAutoscroll;
-      active = null;
-      root.classList.remove('marktex-autoscrolling');
-      root.style.removeProperty('--mt-scroll-cursor');
+  // 侧栏里几乎全是链接（大纲条目、缩略图），浏览器在链接上按中键时会打开新标签页而不是开始自动滚动。
+  // 按下中键时暂时去掉链接的 href，让浏览器按普通区域处理（开始自带的中键滚动），之后再恢复。
+  function installSidebarMiddleScroll() {
+    const panel = $('viewsManagerContent');
+    if (!panel) return;
+    const held = new Map();
+    let timer = 0;
+    const restore = () => {
+      clearTimeout(timer);
+      timer = 0;
+      for (const [a, href] of held) a.setAttribute('href', href);
+      held.clear();
     };
-    CCM.stopPdfAutoscroll = stop;
-    const speed = (distance) => Math.sign(distance) * Math.min(2.4, Math.pow(Math.max(0, Math.abs(distance) - 10), 1.3) / 350);
-    const tick = (time) => {
-      if (!active) return;
-      const a = active;
-      if (!a.port.isConnected || !a.port.clientHeight) { stop(); return; }
-      const dt = Math.min(40, time - a.time || 16);
-      a.time = time;
-      const dx = a.horizontal ? speed(a.x - a.startX) : 0;
-      const dy = a.vertical ? speed(a.y - a.startY) : 0;
-      a.port.scrollBy({ left: dx * dt, top: dy * dt, behavior: 'instant' });
-      const cursor = dx && dy ? 'all-scroll' : dx ? 'ew-resize' : dy ? 'ns-resize' : 'all-scroll';
-      if (root.style.getPropertyValue('--mt-scroll-cursor') !== cursor) root.style.setProperty('--mt-scroll-cursor', cursor);
-      frame = requestAnimationFrame(tick);
-    };
-    const consume = (event) => { event.preventDefault(); event.stopImmediatePropagation(); };
-    document.addEventListener('pointerdown', (event) => {
-      if (active) { if (event.button === 1) middlePort = active.port; stop(); consume(event); return; }
-      middlePort = null;
-      if (event.button !== 1 || event.pointerType !== 'mouse' || app.pdfViewer?.isInPresentationMode) return;
-      const port = event.target.closest('#viewsManagerContent, #viewerContainer');
-      if (!port || event.target.closest('input, textarea, select, [contenteditable="true"]')) return;
-      const horizontal = port.scrollWidth > port.clientWidth + 1;
-      const vertical = port.scrollHeight > port.clientHeight + 1;
-      if (!horizontal && !vertical) return;
-      const marker = document.createElement('div');
-      marker.className = 'marktex-scroll-origin';
-      marker.setAttribute('aria-hidden', 'true');
-      marker.dataset.axes = horizontal && vertical ? 'both' : horizontal ? 'horizontal' : 'vertical';
-      marker.style.left = `${event.clientX}px`;
-      marker.style.top = `${event.clientY}px`;
-      document.body.append(marker);
-      active = { port, marker, horizontal, vertical, startX: event.clientX, startY: event.clientY,
-        x: event.clientX, y: event.clientY, time: 0, dragged: false, released: false };
-      port.dataset.marktexAutoscroll = 'true';
-      middlePort = port;
-      root.classList.add('marktex-autoscrolling');
-      frame = requestAnimationFrame(tick);
-      consume(event); // 不让中键变成打开链接、绘图或浏览器自己的自动滚动。
+    const restoreLater = () => { clearTimeout(timer); timer = setTimeout(restore, 0); };
+    panel.addEventListener('pointerdown', (event) => {
+      restore();
+      if (event.button !== 1) return;
+      const a = event.target.closest('a[href]');
+      if (!a || !panel.contains(a)) return;
+      held.set(a, a.getAttribute('href'));
+      a.removeAttribute('href');
     }, true);
-    document.addEventListener('pointermove', (event) => {
-      if (!active) return;
-      active.x = event.clientX;
-      active.y = event.clientY;
-      if (!active.released && Math.hypot(active.x - active.startX, active.y - active.startY) > 10) active.dragged = true;
-    }, true);
-    document.addEventListener('pointerup', (event) => {
-      if (!active || event.button !== 1) return;
-      if (active.dragged) stop(); // 按住中键拖动：松开即停止；单击中键：保持自动滚动。
-      else active.released = true;
-      consume(event);
-    }, true);
-    document.addEventListener('auxclick', (event) => {
-      if (event.button === 1 && middlePort?.contains(event.target)) consume(event);
-      middlePort = null;
-    }, true);
-    document.addEventListener('keydown', (event) => {
-      if (!active) return;
-      stop();
-      if (event.key === 'Escape') consume(event);
-    }, true);
-    document.addEventListener('wheel', stop, { capture: true, passive: true });
-    window.addEventListener('blur', stop);
-    window.addEventListener('pagehide', stop);
-    document.addEventListener('visibilitychange', () => { if (document.hidden) stop(); });
-    app.eventBus.on('pagesinit', stop);
+    for (const name of ['pointerup', 'auxclick', 'pointercancel']) document.addEventListener(name, restoreLater, true);
+    window.addEventListener('blur', restore);
   }
 
   // 已按页码、页内位置排序的大纲；同一位置取更深的条目，尚未进入的下一节不能提前选中。
@@ -101,7 +45,30 @@
     const locate = $('viewsManagerCurrentOutlineButton');
     if (!tree || !panel || !viewer || !locate) return;
     let doc = null, entries = [], current = null, paused = false, frame = 0;
+    let follow = CCM.DEFAULTS ? CCM.DEFAULTS.outlineFollow !== false : true;
     const byAnchor = new Map();
+    // 右下角的按钮切换“自动跟随”：开启时大纲随阅读位置滚动，当前章节保持在侧栏中间
+    const render = () => {
+      locate.setAttribute('aria-pressed', String(follow));
+      const label = CCM.t ? CCM.t(follow ? 'pdf.followOn' : 'pdf.followOff') : '';
+      if (label) { locate.title = label; locate.setAttribute('aria-label', label); }
+      locate.removeAttribute('data-l10n-id');
+      const span = locate.querySelector('span');
+      if (span) { span.removeAttribute('data-l10n-id'); span.textContent = label; }
+    };
+    const setFollow = (on, save) => {
+      follow = !!on;
+      render();
+      if (save) { try { chrome.storage.sync.set({ outlineFollow: follow }); } catch (_) { /* ignore */ } }
+    };
+    try {
+      chrome.storage.sync.get({ outlineFollow: follow }, (s) => { setFollow(s.outlineFollow !== false, false); if (follow) schedule(); });
+      chrome.storage.onChanged.addListener((c, area) => {
+        if (area === 'sync' && c.outlineFollow) setFollow(c.outlineFollow.newValue !== false, false);
+        if (area === 'sync' && c.language) setTimeout(render, 0);
+      });
+    } catch (_) { /* ignore */ }
+    render();
     const isVisible = () => app.viewsManager?.isOpen && !tree.hidden && !tree.classList.contains('hidden');
     const mark = (entry) => {
       if (current === entry) return;
@@ -115,14 +82,21 @@
       entry.anchor.setAttribute('aria-current', 'location');
     };
     const reveal = (entry) => {
-      if (!entry || !isVisible()) return;
+      if (!entry || !isVisible()) return false;
       for (let node = entry.anchor.parentElement.parentElement; node && node !== tree; node = node.parentElement) {
         if (node.classList.contains('treeItem')) node.querySelector(':scope > .treeItemToggler')?.classList.remove('treeItemsHidden');
       }
+      // 当前条目滚到侧栏中间；靠近大纲开头或结尾时由滚动范围自然限制（停在顶部 / 底部）
       const item = entry.anchor.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
-      if (item.top < bounds.top + 8) panel.scrollTop += item.top - bounds.top - 8;
-      else if (item.bottom > bounds.bottom - 48) panel.scrollTop += item.bottom - bounds.bottom + 48;
+      const max = panel.scrollHeight - panel.clientHeight;
+      const target = Math.max(0, Math.min(max, panel.scrollTop + (item.top + item.height / 2) - (bounds.top + bounds.height / 2)));
+      // 相邻章节之间平滑过渡；跳转较远时直接定位，避免长时间的滚动动画
+      const distance = Math.abs(target - panel.scrollTop);
+      if (distance >= 1) panel.scrollTo({ top: target, behavior: smooth && distance < panel.clientHeight / 2 ? 'smooth' : 'instant' });
+      return true;
     };
+    let smooth = false;
+    let pending = true; // 恢复跟随、切换到大纲视图或大纲加载后，即使章节未变也要定位一次
     const update = (force = false) => {
       if (doc !== app.pdfDocument || !entries.length) return;
       const edge = viewer.getBoundingClientRect().top + 24;
@@ -137,8 +111,14 @@
           break;
         }
       }
+      const before = current;
       mark(outlineAt(entries, page, offset));
-      if (force || (!paused && panel.dataset.marktexAutoscroll !== 'true')) reveal(current);
+      // 只在当前章节变化（或手动定位）时滚动大纲，章节切换时平滑过渡
+      if (force || (follow && !paused && (current !== before || pending))) {
+        smooth = !force && !!before && !pending;
+        if (reveal(current)) pending = false;
+        smooth = false;
+      }
     };
     const schedule = () => {
       if (frame) return;
@@ -155,7 +135,7 @@
     };
     const rebuild = async () => {
       const pdf = app.pdfDocument;
-      doc = pdf; entries = []; byAnchor.clear(); mark(null); paused = false;
+      doc = pdf; entries = []; byAnchor.clear(); mark(null); paused = false; pending = true;
       if (!pdf) return;
       const outline = await pdf.getOutline();
       if (doc !== pdf || !outline) return;
@@ -190,7 +170,7 @@
     panel.addEventListener('wheel', pause, { passive: true });
     panel.addEventListener('pointerdown', pause, true);
     panel.addEventListener('keydown', (event) => { if (/^(Arrow|Page|Home|End)/.test(event.key)) pause(); });
-    const resume = () => { paused = false; schedule(); };
+    const resume = () => { if (paused) pending = true; paused = false; schedule(); };
     viewer.addEventListener('wheel', resume, { passive: true });
     viewer.addEventListener('pointerdown', resume, true);
     $('toolbarContainer')?.addEventListener('pointerdown', (event) => { if (!panel.contains(event.target)) resume(); }, true);
@@ -201,12 +181,15 @@
       paused = false; mark(entry);
       app.pdfLinkService.goToDestination(entry.dest);
     }, true);
+    // 按钮：开关自动跟随；打开时立即定位到当前章节
     locate.addEventListener('click', (event) => {
-      if (!entries.length) return;
-      event.preventDefault(); event.stopImmediatePropagation(); paused = false; update(true);
+      event.preventDefault(); event.stopImmediatePropagation();
+      setFollow(!follow, true);
+      if (follow && entries.length) { paused = false; update(true); }
     }, true);
     viewer.addEventListener('scroll', schedule, { passive: true });
-    for (const name of ['pagechanging', 'updateviewarea', 'sidebarviewchanged', 'scalechanging']) app.eventBus.on(name, schedule);
+    app.eventBus.on('sidebarviewchanged', () => { pending = true; schedule(); });
+    for (const name of ['pagechanging', 'updateviewarea', 'scalechanging']) app.eventBus.on(name, schedule);
     app.eventBus.on('rotationchanging', reindexPositions);
     app.eventBus.on('pagesinit', () => { doc = app.pdfDocument; entries = []; byAnchor.clear(); mark(null); });
     app.eventBus.on('outlineloaded', () => { rebuild().catch((error) => console.warn('[marktex-copy] outline navigation', error)); });
@@ -215,7 +198,7 @@
   CCM.installPdfNavigation = (app) => {
     if (installed.has(app)) return;
     installed.add(app);
-    installAutoscroll(app);
+    installSidebarMiddleScroll();
     installOutlineFollow(app);
   };
   CCM._pdfNavigationDebug = { outlineAt };
