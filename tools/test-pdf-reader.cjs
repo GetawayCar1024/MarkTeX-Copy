@@ -139,6 +139,27 @@ function fixture() {
       assert.equal(await page.getAttribute('#viewsManagerCurrentOutlineButton', 'aria-pressed'), 'true');
       assert.ok(await outlineOffset() < 30);
     });
+    await check('page thumbnails keep the current page centred', async () => {
+      await page.click('.marktex-seg:nth-child(1)');
+      await page.waitForSelector('#thumbnailsView .thumbnail');
+      const thumbOffset = () => page.evaluate(() => {
+        const panel = document.getElementById('viewsManagerContent').getBoundingClientRect();
+        const item = document.querySelector(`#thumbnailsView .thumbnail[page-number="${PDFViewerApplication.page}"], #thumbnailsView [data-page-number="${PDFViewerApplication.page}"]`)
+          || PDFViewerApplication.pdfThumbnailViewer._thumbnails[PDFViewerApplication.page - 1].div;
+        const r = item.getBoundingClientRect();
+        return Math.abs((r.top + r.height / 2) - (panel.top + panel.height / 2));
+      });
+      await page.evaluate(() => { PDFViewerApplication.page = 20; });
+      await page.waitForTimeout(500);
+      assert.ok(await thumbOffset() < 40);
+      await page.evaluate(() => { PDFViewerApplication.page = 21; });
+      await page.waitForTimeout(700); // 相邻页平滑滚动
+      assert.ok(await thumbOffset() < 40);
+      await page.evaluate(() => { PDFViewerApplication.page = 1; });
+      await page.waitForTimeout(500);
+      assert.equal(await page.evaluate(() => document.getElementById('viewsManagerContent').scrollTop), 0);
+      await page.click('.marktex-seg:nth-child(2)');
+    });
     await check('middle-clicking an outline link scrolls only the sidebar', async () => {
       await page.evaluate(() => { document.getElementById('viewsManagerContent').scrollTop = 0; });
       const before = await page.evaluate(() => document.getElementById('viewerContainer').scrollTop);

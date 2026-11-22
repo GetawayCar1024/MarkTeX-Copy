@@ -40,6 +40,35 @@
     return current || (entries[0]?.page === page ? entries[0] : null);
   }
 
+  // 把元素滚到容器中间；靠近开头或结尾时由滚动范围自然限制（停在顶部 / 底部）。
+  // 相邻条目之间平滑过渡；跳转较远时直接定位，避免长时间的滚动动画
+  function centerIn(container, el, smooth) {
+    const item = el.getBoundingClientRect(), bounds = container.getBoundingClientRect();
+    const max = container.scrollHeight - container.clientHeight;
+    const target = Math.max(0, Math.min(max, container.scrollTop + (item.top + item.height / 2) - (bounds.top + bounds.height / 2)));
+    const distance = Math.abs(target - container.scrollTop);
+    if (distance >= 1) container.scrollTo({ top: target, behavior: smooth && distance < container.clientHeight / 2 ? 'smooth' : 'instant' });
+  }
+
+  // 页面缩略图：当前页同样尽量保持在侧栏中间（PDF.js 默认只在缩略图离开可见区域时才滚动）。
+  // 手动浏览侧栏时（isPaused）不移动，与大纲的处理一致
+  function installThumbnailFollow(app, isPaused) {
+    const thumbs = app.pdfThumbnailViewer;
+    if (!thumbs || thumbs.__marktexCentered || typeof thumbs.scrollThumbnailIntoView !== 'function') return;
+    thumbs.__marktexCentered = true;
+    const original = thumbs.scrollThumbnailIntoView.bind(thumbs);
+    thumbs.scrollThumbnailIntoView = (pageNumber) => {
+      const container = thumbs.scrollableContainer || $('viewsManagerContent');
+      const before = container ? container.scrollTop : 0;
+      const previous = thumbs._currentPageNumber;
+      original(pageNumber);
+      const div = thumbs._thumbnails?.[pageNumber - 1]?.div;
+      if (!container || !div || !div.isConnected || !container.clientHeight) return;
+      if (isPaused()) { container.scrollTop = before; return; }
+      centerIn(container, div, previous !== pageNumber && Math.abs(previous - pageNumber) === 1);
+    };
+  }
+
   function installOutlineFollow(app) {
     const tree = $('outlinesView'), panel = $('viewsManagerContent'), viewer = $('viewerContainer');
     const locate = $('viewsManagerCurrentOutlineButton');
@@ -86,13 +115,7 @@
       for (let node = entry.anchor.parentElement.parentElement; node && node !== tree; node = node.parentElement) {
         if (node.classList.contains('treeItem')) node.querySelector(':scope > .treeItemToggler')?.classList.remove('treeItemsHidden');
       }
-      // 当前条目滚到侧栏中间；靠近大纲开头或结尾时由滚动范围自然限制（停在顶部 / 底部）
-      const item = entry.anchor.getBoundingClientRect(), bounds = panel.getBoundingClientRect();
-      const max = panel.scrollHeight - panel.clientHeight;
-      const target = Math.max(0, Math.min(max, panel.scrollTop + (item.top + item.height / 2) - (bounds.top + bounds.height / 2)));
-      // 相邻章节之间平滑过渡；跳转较远时直接定位，避免长时间的滚动动画
-      const distance = Math.abs(target - panel.scrollTop);
-      if (distance >= 1) panel.scrollTo({ top: target, behavior: smooth && distance < panel.clientHeight / 2 ? 'smooth' : 'instant' });
+      centerIn(panel, entry.anchor, smooth);
       return true;
     };
     let smooth = false;
@@ -193,6 +216,7 @@
     app.eventBus.on('rotationchanging', reindexPositions);
     app.eventBus.on('pagesinit', () => { doc = app.pdfDocument; entries = []; byAnchor.clear(); mark(null); });
     app.eventBus.on('outlineloaded', () => { rebuild().catch((error) => console.warn('[marktex-copy] outline navigation', error)); });
+    installThumbnailFollow(app, () => paused);
   }
 
   CCM.installPdfNavigation = (app) => {
